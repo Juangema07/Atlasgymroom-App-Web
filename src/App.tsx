@@ -531,25 +531,24 @@ export default function App() {
     try { await importLocalBackup(await file.text()); await refresh(); notify('Respaldo importado en este dispositivo.') }
     catch (error) { notify(error instanceof Error ? error.message : 'No se pudo importar el respaldo.') }
   }
-  async function resetTestData() {
-    const confirmation = window.prompt('Vas a borrar clientes, pagos, asistencias, ventas, productos, inventario, compras, gastos, caja y registros auxiliares. Se conservarán usuarios y tarifas. Escribe REINICIAR para continuar.')
-    if (confirmation !== 'REINICIAR') { notify('Reinicio cancelado.'); return }
+  async function runDemoAction(action: 'seed' | 'reset') {
+    const phrase = action === 'seed' ? 'CARGAR DEMO' : 'LIMPIAR DEMO'
+    const confirmation = window.prompt(action === 'seed'
+      ? 'Se crearán registros ficticios para probar los módulos. No se modificarán tus datos reales. Escribe CARGAR DEMO.'
+      : 'Se eliminarán únicamente los registros DEMO. Los datos reales, usuarios y tarifas se conservarán. Escribe LIMPIAR DEMO.')
+    if (confirmation !== phrase) { notify('Operación cancelada.'); return }
     setBusy(true)
     try {
-      if (supabaseConfigured) {
-        if (!supabase || !session || !navigator.onLine) throw new Error('Conéctate e inicia sesión como propietario para reiniciar los datos remotos.')
-        const { error } = await supabase.rpc('reset_test_data')
-        if (error) throw error
-      } else {
-        await resetLocalTestData()
-        const currentPlans = await listRows('plans')
-        for (const plan of defaultTariffs) if (!currentPlans.some(row => row.name.toLowerCase() === plan.name.toLowerCase())) await saveRow('plans', { ...plan, created_by: null, created_at: nowIso(), updated_at: nowIso() })
-      }
+      if (!supabase || !session || !navigator.onLine) throw new Error('Conéctate e inicia sesión como propietario para gestionar los datos de demostración.')
+      const { error } = await supabase.rpc(action === 'seed' ? 'seed_demo_data' : 'reset_demo_data')
+      if (error) throw error
       await refresh(); setSaleLines([]); setPurchaseLines([])
-      notify('Datos de prueba reiniciados. Se conservaron tarifas y usuarios.')
-    } catch (error) { notify(error instanceof Error ? error.message : 'No se pudieron reiniciar los registros.') }
+      notify(action === 'seed' ? 'Datos ficticios cargados. Ya puedes probar los módulos.' : 'Datos DEMO eliminados. Tus datos reales se conservaron.')
+    } catch (error) { notify(error instanceof Error ? error.message : 'No se pudo completar la operación.') }
     finally { setBusy(false) }
   }
+  async function seedDemoData() { await runDemoAction('seed') }
+  async function resetTestData() { await runDemoAction('reset') }
 
   const handleSection = (label: Section) => { setSection(label); setMenuOpen(false); setSearch(''); setToast('') }
   const openCreate = () => {
@@ -609,7 +608,7 @@ export default function App() {
         {section === 'Inicio' && <Dashboard activeMembers={activeMembers} expiredMembers={expiredMembers} total={members.length} todayIncome={todayIncome} todayAttendances={(rows.attendance || []).filter(a => dateInBogota(a.entered_at) === today()).length} expiring={members.filter(m => m.end_date && m.end_date >= today() && m.end_date <= datePlusDays(today(), 7)).length} stockLow={stockLow} rows={rows} onNavigate={handleSection} />}
         {section === 'Caja' && <CashPage session={activeSession} sessions={rows.cash_sessions || []} movements={rows.cash_movements || []} onOpen={() => openSpecial('cash')} onClose={() => openSpecial('cash')} />}
         {section === 'Informes' && <Reports rows={rows} />}
-        {section === 'Configuración' && <SettingsPage onBackup={backup} onRestore={() => fileRef.current?.click()} onReset={resetTestData} busy={busy} />}
+        {section === 'Configuración' && <SettingsPage onBackup={backup} onRestore={() => fileRef.current?.click()} onReset={resetTestData} onSeed={seedDemoData} busy={busy} />}
         {section === 'Productos' && <ProductCatalog products={filteredRows} onCreate={openCreate} onEdit={openRecord}/>}
         {moduleConfig && section !== 'Productos' && <DataModule config={moduleConfig} rows={filteredRows} isOwner={Boolean(isOwner)} search={search} setSearch={setSearch} onCreate={openCreate} onEdit={openRecord} onTogglePause={toggleMemberPause} onMemberPayment={openMemberPayment} onCollectBalance={payment => { setEditing(payment); setForm({ amount_paid: String(Math.max(0, Number(payment.amount || 0) - Number(payment.amount_paid || 0))), method: 'cash' }); setDialog('balance') }} memberName={memberName} productName={productName} planName={planName} />}
         {!moduleConfig && section !== 'Inicio' && section !== 'Caja' && section !== 'Informes' && section !== 'Configuración' && <PlaceholderModule title={section} />}
@@ -830,8 +829,8 @@ function Reports({ rows }: { rows:Record<string,Row[]> }) {
   </>
 }
 
-function SettingsPage({ onBackup, onRestore, onReset, busy }: { onBackup:()=>void; onRestore:()=>void; onReset:()=>void; busy:boolean }) {
-  return <><div className="module-heading"><div><div className="eyebrow">SISTEMA</div><h1>Configuración</h1><p>Respaldo, continuidad y limpieza del entorno de pruebas.</p></div></div><div className="content-grid"><section className="panel setting-card"><div className="setting-icon"><FileDown/></div><h2>Respaldo local</h2><p>Descarga un archivo JSON con los datos guardados en este navegador. El respaldo puede contener información personal; protégelo.</p><button className="primary-button" onClick={onBackup}><Download size={16}/> Exportar respaldo</button></section><section className="panel setting-card"><div className="setting-icon"><FileUp/></div><h2>Restaurar respaldo</h2><p>Importa un respaldo previamente exportado en el dispositivo actual. Los registros se agregan o actualizan.</p><button className="secondary-button" onClick={onRestore}><FileUp size={16}/> Seleccionar archivo</button></section></div><section className="panel reset-test-panel"><div className="reset-test-icon"><RefreshCw size={20}/></div><div><h2>Reiniciar registros de prueba</h2><p>Borra clientes, asistencias, pagos, ventas, productos, inventario, compras, gastos, caja y registros auxiliares. Conserva usuarios y tarifas. En Supabase solo lo puede ejecutar el propietario.</p><small>El sistema pedirá escribir REINICIAR antes de borrar. Esta acción no se puede deshacer; exporta un respaldo primero.</small></div><button className="danger-button" disabled={busy} onClick={onReset}>{busy?'Procesando…':'Reiniciar datos de prueba'}</button></section><section className="panel security-panel"><Shield/><div><h2>Seguridad y acceso</h2><p>Con Supabase, los usuarios se autentican individualmente y la base de datos aplica permisos RLS. Los roles se administran desde el perfil del usuario. No compartas contraseñas ni claves secretas.</p></div></section></>
+function SettingsPage({ onBackup, onRestore, onReset, onSeed, busy }: { onBackup:()=>void; onRestore:()=>void; onReset:()=>void; onSeed:()=>void; busy:boolean }) {
+  return <><div className="module-heading"><div><div className="eyebrow">SISTEMA</div><h1>Configuración</h1><p>Respaldo, continuidad y limpieza del entorno de pruebas.</p></div></div><div className="content-grid"><section className="panel setting-card"><div className="setting-icon"><FileDown/></div><h2>Respaldo local</h2><p>Descarga un archivo JSON con los datos guardados en este navegador. El respaldo puede contener información personal; protégelo.</p><button className="primary-button" onClick={onBackup}><Download size={16}/> Exportar respaldo</button></section><section className="panel setting-card"><div className="setting-icon"><FileUp/></div><h2>Restaurar respaldo</h2><p>Importa un respaldo previamente exportado en el dispositivo actual. Los registros se agregan o actualizan.</p><button className="secondary-button" onClick={onRestore}><FileUp size={16}/> Seleccionar archivo</button></section></div><section className="panel setting-card"><div className="setting-icon"><Activity/></div><h2>Modo de demostración</h2><p>Carga registros ficticios para probar miembros, pagos, asistencias, productos, ventas, compras, gastos e informes. Quedan identificados como DEMO.</p><button className="primary-button" disabled={busy} onClick={onSeed}><Plus size={16}/> {busy?"Procesando…":"Cargar datos de demostración"}</button></section><section className="panel reset-test-panel"><div className="reset-test-icon"><RefreshCw size={20}/></div><div><h2>Limpiar datos de demostración</h2><p>Elimina únicamente registros DEMO. Conserva datos reales, usuarios y tarifas.</p><small>Confirma escribiendo LIMPIAR DEMO. Exporta un respaldo antes de probar.</small></div><button className="danger-button" disabled={busy} onClick={onReset}>{busy?"Procesando…":"Limpiar pruebas"}</button></section><section className="panel security-panel"><Shield/><div><h2>Seguridad y acceso</h2><p>Con Supabase, los usuarios se autentican individualmente y la base de datos aplica permisos RLS. Los roles se administran desde el perfil del usuario. No compartas contraseñas ni claves secretas.</p></div></section></>
 }
 
 function AccessDenied(){return <div className="panel access-denied"><Shield size={25}/><h2>Acceso reservado al propietario</h2><p>Este módulo contiene información administrativa. Solicita al propietario que revise los permisos de tu cuenta.</p></div>}
