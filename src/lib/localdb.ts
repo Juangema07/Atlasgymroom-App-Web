@@ -3,7 +3,7 @@ import Dexie, { type Table } from 'dexie'
 export const ENTITY_TABLES = [
   'profiles', 'plans', 'members', 'payments', 'attendance', 'day_passes',
   'products', 'sales', 'sale_items', 'stock_movements', 'purchases',
-  'purchase_items', 'expenses', 'cash_sessions', 'cash_movements', 'audit_logs',
+  'purchase_items', 'expenses', 'cash_sessions', 'cash_movements', 'audit_logs', 'gym_records',
 ] as const
 
 export type EntityTable = typeof ENTITY_TABLES[number]

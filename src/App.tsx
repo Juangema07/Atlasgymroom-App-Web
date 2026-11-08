@@ -229,7 +229,7 @@ export default function App() {
   const isOwner = profile?.role === 'owner'
   const moduleConfig = configFor(section, rows)
   const moduleRows = moduleConfig ? (rows[moduleConfig.table] || []) : []
-  const scopedRows = section === 'Cuentas por Cobrar Pagos' ? moduleRows.filter(row => Number(row.amount || 0) > Number(row.amount_paid || 0) && row.status !== 'voided') : section === 'Congelar Pagos' ? moduleRows.filter(row => Boolean(row.paused_at)) : moduleRows
+  const scopedRows = moduleConfig?.table === 'gym_records' ? moduleRows.filter(row => row.record_type === section) : section === 'Cuentas por Cobrar Pagos' ? moduleRows.filter(row => Number(row.amount || 0) > Number(row.amount_paid || 0) && row.status !== 'voided') : section === 'Cuentas por Cobrar Ventas' ? moduleRows.filter(row => Number(row.total || 0) > Number(row.amount_paid || 0) && row.status !== 'voided') : section === 'Cuentas por Pagar Compras' ? moduleRows.filter(row => Number(row.total_amount || 0) > Number(row.amount_paid || 0)) : section === 'Congelar Pagos' ? moduleRows.filter(row => Boolean(row.paused_at)) : moduleRows
   const filteredRows = scopedRows.filter(row => JSON.stringify(row).toLowerCase().includes(search.toLowerCase()))
 
   async function signIn(email: string, password: string) {
@@ -320,6 +320,7 @@ export default function App() {
       row.entered_at = nowIso()
     }
     if (section === 'Planes') row.active = form.active !== 'false'
+    if (moduleConfig.table === 'gym_records') { row.record_type = section; row.amount = Number(row.amount || 0) }
     setBusy(true)
     const stockMovementId = makeId()
     const result = section === 'Productos' && !editing
@@ -704,7 +705,7 @@ function DataModule({ config, rows, isOwner, search, setSearch, onCreate, onEdit
     if (key === 'id') return String(value || '').slice(0,8)
     return value == null || value === '' ? '—' : String(value)
   }
-  const canEdit = config.table === 'members' || (isOwner && (config.table === 'plans' || config.table === 'products'))
+  const canEdit = config.table === 'members' || config.table === 'gym_records' || (isOwner && (config.table === 'plans' || config.table === 'products'))
   const showActions = canEdit || config.table === 'payments'
   return <><div className="module-heading"><div><div className="eyebrow">GESTIÓN</div><h1>{config.title}</h1><p>{config.description}</p></div>{config.fields.length > 0 && config.title !== 'Congelar pagos' && (config.table !== 'plans' && config.table !== 'products' || isOwner) && <button className="primary-button" onClick={onCreate}><Plus size={16}/> Nuevo registro</button>}{config.table === 'day_passes' && <button className="primary-button" onClick={onCreate}><Plus size={16}/> Nuevo pase</button>}{config.table === 'payments' && <button className="primary-button" onClick={onCreate}><Plus size={16}/> Registrar pago</button>}{config.table === 'sales' && <button className="primary-button" onClick={onCreate}><Plus size={16}/> Nueva venta</button>}{config.table === 'purchases' && <button className="primary-button" onClick={onCreate}><Plus size={16}/> Registrar compra</button>}{config.table === 'expenses' && <button className="primary-button" onClick={onCreate}><Plus size={16}/> Registrar gasto</button>}</div>
     <section className="panel data-panel"><div className="table-toolbar"><div className="module-count">{rows.length} registro(s)</div><div className="search-box"><Search size={16}/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar…"/></div></div>
