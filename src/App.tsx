@@ -6,7 +6,7 @@ import {
   Check, CircleDollarSign, ClipboardList, Cloud, CloudOff,
   Download, Dumbbell, FileDown, FileUp, Home, LogOut, Menu,
   Package, Plus, RefreshCw, Search, Settings, Shield, ShoppingBag, Users,
-  Wallet, X, Pencil, Receipt, AlertTriangle, UserRound, Boxes, LockKeyhole,
+  Wallet, X, Pencil, Receipt, AlertTriangle, UserRound, Boxes, LockKeyhole, Pause, Play,
 } from 'lucide-react'
 import { supabase, supabaseConfigured } from './lib/supabase'
 import {
@@ -15,18 +15,53 @@ import {
 } from './lib/data'
 import { makeId, nowIso, type EntityTable, type Row } from './lib/localdb'
 
-type Section = 'Inicio' | 'Miembros' | 'Planes' | 'Asistencia' | 'Pase diario' | 'Pagos' | 'Ventas' | 'Productos' | 'Compras' | 'Gastos' | 'Caja' | 'Informes' | 'Equipo' | 'Auditoría' | 'Configuración'
+type Section = 'Inicio' | 'Miembros' | 'Planes' | 'Asistencia' | 'Pase diario' | 'Pagos' | 'Ventas' | 'Productos' | 'Compras' | 'Gastos' | 'Caja' | 'Informes' | 'Equipo' | 'Auditoría' | 'Configuración' | 'Tarifas' | 'Cuentas por Cobrar Pagos' | 'Congelar Pagos' | 'Notas Débito' | 'Notas Crédito' | 'Cuentas por Cobrar Ventas' | 'Lista de Precios' | 'Evoluciones' | 'Rutinas' | 'Ejercicios' | 'Proveedores' | 'Empleados' | 'Cuentas por Pagar Compras' | 'Documento Soporte' | 'Notas Ajuste' | 'Tipos de Gastos' | 'Ajuste Cartera' | 'Categorías de Producto' | 'Ajustes de Inventario' | 'Regularizaciones de Inventario' | 'Kardex de Inventario' | 'Configuración de Reservaciones' | 'Clases' | 'Reservaciones' | 'Mi Sucursal' | 'Menú de Navegación' | 'Roles' | 'Usuarios' | 'Configuración de Correos' | 'Plantilla de Correos' | 'Notificaciones' | 'Historial de Correos'
 type Field = { key: string; label: string; type?: string; required?: boolean; disabled?: boolean; placeholder?: string; options?: { value: string; label: string }[] }
 type ModuleConfig = { table: EntityTable; title: string; description: string; fields: Field[]; columns: { key: string; label: string }[] }
 
-const navigation: { label: Section; icon: typeof Home }[] = [
-  { label: 'Inicio', icon: Home }, { label: 'Miembros', icon: Users }, { label: 'Planes', icon: ClipboardList },
-  { label: 'Asistencia', icon: Activity }, { label: 'Pase diario', icon: CalendarDays }, { label: 'Pagos', icon: CircleDollarSign },
-  { label: 'Ventas', icon: ShoppingBag }, { label: 'Productos', icon: Package }, { label: 'Compras', icon: Boxes },
-  { label: 'Gastos', icon: Receipt }, { label: 'Caja', icon: Wallet }, { label: 'Informes', icon: BarChart3 },
-]
-const adminNavigation: { label: Section; icon: typeof Home }[] = [
-  { label: 'Equipo', icon: UserRound }, { label: 'Auditoría', icon: Shield }, { label: 'Configuración', icon: Settings },
+type NavLeaf = { label: string; target: Section }
+type NavGroup = { label: string; icon: typeof Home; target?: Section; items?: NavLeaf[]; ownerOnly?: boolean }
+const navGroups: NavGroup[] = [
+  { label: 'Tablero', icon: Home, target: 'Inicio' },
+  { label: 'Asistencia', icon: Activity, items: [{ label: 'Lista de asistencia', target: 'Asistencia' }, { label: 'Pase diario', target: 'Pase diario' }] },
+  { label: 'Administración', icon: Settings, ownerOnly: true, items: [
+    { label: 'Auditorías', target: 'Auditoría' }, { label: 'Configuración', target: 'Configuración' },
+    { label: 'Menú de navegación', target: 'Menú de Navegación' }, { label: 'Mi sucursal', target: 'Mi Sucursal' },
+    { label: 'Roles', target: 'Roles' }, { label: 'Usuarios', target: 'Usuarios' },
+    { label: 'Configuración de correos', target: 'Configuración de Correos' }, { label: 'Plantilla de correos', target: 'Plantilla de Correos' },
+    { label: 'Notificaciones', target: 'Notificaciones' }, { label: 'Historial de correos', target: 'Historial de Correos' },
+  ] },
+  { label: 'Pagos', icon: CircleDollarSign, items: [
+    { label: 'Tarifas', target: 'Tarifas' }, { label: 'Pagos', target: 'Pagos' },
+    { label: 'Cuentas por cobrar pagos', target: 'Cuentas por Cobrar Pagos' }, { label: 'Congelar pagos', target: 'Congelar Pagos' },
+  ] },
+  { label: 'Ventas', icon: ShoppingBag, items: [
+    { label: 'Ventas', target: 'Ventas' }, { label: 'Notas débito', target: 'Notas Débito' },
+    { label: 'Notas crédito', target: 'Notas Crédito' }, { label: 'Cuentas por cobrar ventas', target: 'Cuentas por Cobrar Ventas' },
+    { label: 'Lista de precios', target: 'Lista de Precios' },
+  ] },
+  { label: 'Clientes', icon: Users, items: [
+    { label: 'Clientes', target: 'Miembros' }, { label: 'Evoluciones', target: 'Evoluciones' },
+    { label: 'Rutinas', target: 'Rutinas' }, { label: 'Ejercicios', target: 'Ejercicios' },
+  ] },
+  { label: 'Terceros', icon: UserRound, items: [
+    { label: 'Proveedores', target: 'Proveedores' }, { label: 'Empleados', target: 'Empleados' },
+  ] },
+  { label: 'Egresos', icon: Receipt, items: [
+    { label: 'Compras', target: 'Compras' }, { label: 'Cuentas por pagar compras', target: 'Cuentas por Pagar Compras' },
+    { label: 'Documento soporte', target: 'Documento Soporte' }, { label: 'Notas ajuste', target: 'Notas Ajuste' },
+    { label: 'Tipos de gastos', target: 'Tipos de Gastos' }, { label: 'Gastos', target: 'Gastos' }, { label: 'Ajuste cartera', target: 'Ajuste Cartera' },
+  ] },
+  { label: 'Productos', icon: Package, items: [
+    { label: 'Categorías de producto', target: 'Categorías de Producto' }, { label: 'Productos', target: 'Productos' },
+    { label: 'Ajustes de inventario', target: 'Ajustes de Inventario' }, { label: 'Regularizaciones de inventario', target: 'Regularizaciones de Inventario' },
+    { label: 'Kardex de inventario', target: 'Kardex de Inventario' },
+  ] },
+  { label: 'Reservaciones', icon: CalendarDays, items: [
+    { label: 'Configuración', target: 'Configuración de Reservaciones' }, { label: 'Clases', target: 'Clases' }, { label: 'Reservaciones', target: 'Reservaciones' },
+  ] },
+  { label: 'Caja', icon: Wallet, target: 'Caja' },
+  { label: 'Informes', icon: BarChart3, target: 'Informes' },
 ]
 const methods = [{ value: 'cash', label: 'Efectivo' }, { value: 'transfer', label: 'Transferencia' }, { value: 'nequi', label: 'Nequi' }, { value: 'card', label: 'Datáfono / tarjeta' }, { value: 'other', label: 'Otro' }]
 const statuses = [{ value: 'active', label: 'Activo' }, { value: 'inactive', label: 'Inactivo' }, { value: 'expired', label: 'Vencido' }, { value: 'debt', label: 'Con saldo pendiente' }]
@@ -65,8 +100,8 @@ function configFor(section: Section, rows: Record<string, Row[]>): ModuleConfig 
       { key: 'birth_date', label: 'Fecha de nacimiento', type: 'date' }, { key: 'current_plan_id', label: 'Plan', type: 'select', options: [{ value: '', label: 'Sin plan asignado' }, ...planOptions] },
       { key: 'start_date', label: 'Inicio', type: 'date' }, { key: 'end_date', label: 'Vencimiento', type: 'date' },
       { key: 'status', label: 'Estado', type: 'select', options: statuses }, { key: 'notes', label: 'Notas', type: 'textarea' },
-    ], columns: [{ key: 'full_name', label: 'Nombre' }, { key: 'phone', label: 'Teléfono' }, { key: 'status', label: 'Estado' }, { key: 'end_date', label: 'Vence' }] },
-    Planes: { table: 'plans', title: 'Planes y tarifas', description: 'Configura membresías, duración y precio.', fields: [
+    ], columns: [{ key: 'full_name', label: 'Nombre' }, { key: 'document', label: 'Cédula' }, { key: 'phone', label: 'Teléfono' }, { key: 'status', label: 'Estado' }, { key: 'end_date', label: 'Vence' }] },
+    Planes: { table: 'plans', title: 'Tarifas', description: 'Configura membresías, duración y precio.', fields: [
       { key: 'name', label: 'Nombre del plan', required: true }, { key: 'duration_days', label: 'Duración en días', type: 'number', required: true },
       { key: 'price', label: 'Precio (COP)', type: 'number', required: true }, { key: 'active', label: 'Estado', type: 'select', options: [{ value: 'true', label: 'Activo' }, { value: 'false', label: 'Inactivo' }] },
       { key: 'notes', label: 'Descripción', type: 'textarea' },
@@ -89,7 +124,12 @@ function configFor(section: Section, rows: Record<string, Row[]>): ModuleConfig 
     Equipo: { table: 'profiles', title: 'Equipo y usuarios', description: 'Usuarios individuales. Las cuentas se crean desde Supabase Auth.', fields: [], columns: [{ key: 'full_name', label: 'Nombre' }, { key: 'role', label: 'Rol' }, { key: 'active', label: 'Activo' }] },
     Auditoría: { table: 'audit_logs', title: 'Auditoría', description: 'Historial de modificaciones registradas en la base de datos.', fields: [], columns: [{ key: 'entity_table', label: 'Módulo' }, { key: 'action', label: 'Acción' }, { key: 'entity_id', label: 'Registro' }, { key: 'changed_at', label: 'Fecha' }] },
   }
-  return base[section] as ModuleConfig || null
+  const normalized: Section = section === 'Tarifas' || section === 'Lista de Precios' ? 'Planes' : section === 'Cuentas por Cobrar Pagos' ? 'Pagos' : section === 'Congelar Pagos' ? 'Miembros' : section
+  const config = base[normalized] as ModuleConfig | undefined
+  if (!config) return null
+  if (section === 'Cuentas por Cobrar Pagos') return { ...config, title: 'Cuentas por cobrar pagos', description: 'Abonos pendientes y saldos que faltan por recibir.' }
+  if (section === 'Congelar Pagos') return { ...config, title: 'Congelar pagos', description: 'Clientes con actividad pausada y acciones para reactivar su tarifa.' }
+  return config
 }
 
 export default function App() {
@@ -102,7 +142,8 @@ export default function App() {
   const [search, setSearch] = useState('')
   const [attendanceLookup, setAttendanceLookup] = useState('')
   const [memberLookup, setMemberLookup] = useState('')
-  const [dialog, setDialog] = useState<'record' | 'payment' | 'daypass' | 'expense' | 'sale' | 'purchase' | 'cash' | null>(null)
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({ Asistencia: true, Pagos: true, Clientes: true })
+  const [dialog, setDialog] = useState<'record' | 'payment' | 'balance' | 'daypass' | 'expense' | 'sale' | 'purchase' | 'cash' | null>(null)
   const [editing, setEditing] = useState<Row | null>(null)
   const [form, setForm] = useState<Record<string, string>>({})
   const [busy, setBusy] = useState(false)
@@ -164,7 +205,8 @@ export default function App() {
   const isOwner = profile?.role === 'owner'
   const moduleConfig = configFor(section, rows)
   const moduleRows = moduleConfig ? (rows[moduleConfig.table] || []) : []
-  const filteredRows = moduleRows.filter(row => JSON.stringify(row).toLowerCase().includes(search.toLowerCase()))
+  const scopedRows = section === 'Cuentas por Cobrar Pagos' ? moduleRows.filter(row => Number(row.amount || 0) > Number(row.amount_paid || 0) && row.status !== 'voided') : section === 'Congelar Pagos' ? moduleRows.filter(row => Boolean(row.paused_at)) : moduleRows
+  const filteredRows = scopedRows.filter(row => JSON.stringify(row).toLowerCase().includes(search.toLowerCase()))
 
   async function signIn(email: string, password: string) {
     if (!supabase) return
@@ -185,12 +227,41 @@ export default function App() {
     setDialog('record')
   }
   function openSpecial(which: NonNullable<typeof dialog>) {
-    setEditing(null); setForm({}); setSaleLines([]); setPurchaseLines([]); setDialog(which)
+    setEditing(null); setForm(which === 'daypass' ? { amount: '4000', method: 'cash' } : {}); setSaleLines([]); setPurchaseLines([]); setDialog(which)
+  }
+
+  function openMemberPayment(member: Row) {
+    const plan = rows.plans?.find(p => p.id === member.current_plan_id && p.active !== false)
+    const amount = String(plan?.price ?? '')
+    setEditing(null)
+    setForm({ member_id: member.id, plan_id: plan?.id || '', amount, amount_paid: amount, method: 'cash' })
+    setDialog('payment')
+  }
+
+  async function toggleMemberPause(member: Row) {
+    const isPaused = Boolean(member.paused_at)
+    let updated: Row
+    if (isPaused) {
+      const start = new Date(String(member.paused_at) + 'T12:00:00-05:00')
+      const end = new Date(today() + 'T12:00:00-05:00')
+      const pausedDays = Math.max(1, Math.floor((end.getTime() - start.getTime()) / 86400000))
+      updated = { ...member, status: 'active', paused_at: null, paused_days: Number(member.paused_days || 0) + pausedDays, end_date: member.end_date ? datePlusDays(String(member.end_date), pausedDays) : null, updated_at: nowIso() }
+    } else {
+      updated = { ...member, status: 'inactive', paused_at: today(), updated_at: nowIso() }
+    }
+    setBusy(true)
+    const result = await updateRow('members', updated)
+    setBusy(false)
+    setDialog(null)
+    notify(result.message || (isPaused ? 'Actividad reactivada; se compensaron los días pausados.' : 'Actividad pausada; la tarifa queda congelada hasta reactivarla.'))
+    await refresh()
   }
 
   async function registerMemberEntry(member: Row) {
-    const valid = member.status === 'active' && (!member.end_date || member.end_date >= today())
+    const valid = member.status === 'active' && !member.paused_at && (!member.end_date || member.end_date >= today())
     if (!valid) { notify(`${member.full_name}: la tarifa está vencida o pausada. Abre su ficha y registra un pago para habilitar el ingreso.`); return }
+    const alreadyEntered = (rows.attendance || []).some(a => a.member_id === member.id && dateInBogota(a.entered_at) === today())
+    if (alreadyEntered) { notify(member.full_name + ' ya tiene una entrada registrada hoy.'); setAttendanceLookup(''); return }
     const id = makeId()
     const row: Row = { id, member_id: member.id, visitor_name: null, entry_type: 'member', entered_at: nowIso(), created_by: session?.user.id || null, created_at: nowIso() }
     setBusy(true)
@@ -209,7 +280,13 @@ export default function App() {
       if (field.type === 'number') row[field.key] = Number(form[field.key] || 0)
       if (field.key === 'active' || field.key === 'status' && section === 'Planes') row[field.key] = form[field.key] === 'true'
     }
-    if (section === 'Miembros') { row.status ||= 'active'; row.current_plan_id ||= null; if (!String(row.document || '').trim()) { notify('La cédula es obligatoria para registrar un cliente.'); return } }
+    if (section === 'Miembros') {
+      row.status ||= 'active'; row.current_plan_id ||= null
+      const document = String(row.document || '').trim().replace(/\\s+/g, '')
+      if (!document) { notify('La cédula es obligatoria para registrar un cliente.'); return }
+      if (members.some(m => String(m.document || '').replace(/\\s+/g, '') === document && m.id !== row.id)) { notify('Ya existe un cliente registrado con esa cédula.'); return }
+      row.document = document
+    }
     if (section === 'Productos') { row.stock = Number(row.stock || 0); row.min_stock = Number(row.min_stock || 0); row.cost = Number(row.cost || 0); row.active = true }
     if (section === 'Asistencia') { row.member_id ||= null; row.visitor_name ||= null; row.entry_type ||= row.member_id ? 'member' : 'day_pass'; row.entered_at = nowIso() }
     if (section === 'Planes') row.active = form.active !== 'false'
@@ -245,6 +322,32 @@ export default function App() {
     setBusy(true)
     const result = await runBusinessRpc('record_membership_payment', { p_payment: { ...payment, cash_movement_id: cashMovementId } }, optimistic)
     setBusy(false); setDialog(null); notify(result.message || (result.synced ? 'Pago registrado y mensualidad actualizada.' : 'Pago guardado localmente, pendiente de sincronización.'))
+    await refresh()
+  }
+
+  async function submitBalancePayment(event: FormEvent) {
+    event.preventDefault()
+    if (!editing) return
+    const due = Math.max(0, Number(editing.amount || 0) - Number(editing.amount_paid || 0))
+    const amount = Number(form.amount_paid || 0)
+    if (amount <= 0 || amount > due) { notify('El abono debe ser mayor que cero y no superar el saldo pendiente.'); return }
+    const cashMovementId = makeId()
+    const nextPaid = Number(editing.amount_paid || 0) + amount
+    const updated: Row = { ...editing, amount_paid: nextPaid, status: nextPaid >= Number(editing.amount) ? 'paid' : 'partial', paid_at: nextPaid >= Number(editing.amount) ? nowIso() : editing.paid_at, updated_at: nowIso() }
+    const member = rows.members?.find(m => m.id === editing.member_id)
+    const plan = rows.plans?.find(p => p.id === editing.plan_id)
+    const optimistic: { table: EntityTable; row: Row }[] = [
+      { table: 'payments', row: updated },
+      { table: 'cash_movements', row: { id: cashMovementId, cash_session_id: activeSession?.id || null, direction: 'income', amount, method: form.method || 'cash', description: 'Abono a cuenta por cobrar', reference_id: editing.id, created_by: session?.user.id || null, created_at: nowIso() } },
+    ]
+    if (nextPaid >= Number(editing.amount) && member && plan) {
+      const beginDate = member.end_date && member.end_date >= today() && member.status === 'active' ? datePlusDays(String(member.end_date), 1) : today()
+      optimistic.push({ table: 'members', row: { ...member, current_plan_id: plan.id, start_date: beginDate, end_date: datePlusDays(beginDate, Number(plan.duration_days) - 1), status: 'active', paused_at: null, updated_at: nowIso() } })
+    }
+    setBusy(true)
+    const result = await runBusinessRpc('collect_payment_balance', { p_payment_id: editing.id, p_amount: amount, p_method: form.method || 'cash', p_cash_movement_id: cashMovementId }, optimistic)
+    setBusy(false); setDialog(null); setEditing(null)
+    notify(result.message || (result.synced ? 'Abono registrado correctamente.' : 'Abono guardado localmente, pendiente de sincronización.'))
     await refresh()
   }
 
