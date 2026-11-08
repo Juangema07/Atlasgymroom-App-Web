@@ -15,15 +15,19 @@ Aplicación de administración para un gimnasio de una sede. Incluye panel, soci
 
 ## Módulos y estado funcional
 
-- Punto de venta: catálogo con búsqueda, carrito editable, control de cantidades frente al stock, comprador opcional, medios de pago, abonos/saldo pendiente y descuento de inventario mediante operación transaccional.
+- Punto de venta tipo catálogo de juego de gestión: tarjetas visuales por producto, búsqueda, filtros por categoría, fotos, carrito editable, control de stock, medios de pago y registro de venta sin pedir datos del comprador.
 - Ventas y cartera: consulta de ventas y módulo filtrado de cuentas por cobrar.
 - Gestión auxiliar: evoluciones, rutinas, ejercicios, proveedores, empleados, clases, reservaciones, tipos de gastos, categorías de productos, documentos soporte, notas de ajuste/débito/crédito, y registros administrativos.
+- Cobro de entrada general: registra la tarifa diaria de $4.000 sin pedir nombre, cédula ni ficha de cliente; se refleja en asistencia, caja y movimientos.
+- Imágenes de productos: modo local usa imágenes optimizadas en el almacenamiento local; con Supabase utiliza el bucket `product-images`.
+- El tablero incluye tendencias de ingresos de siete días, ventas agrupadas por categoría, indicadores y accesos inmediatos.
+- Configuración incluye un reinicio explícito para datos de prueba; borra registros operativos conservando usuarios y tarifas. Requiere escribir `REINICIAR`; en Supabase se restringe al propietario.
 - Los módulos auxiliares usan la tabla genérica `gym_records` y ofrecen altas, consulta, edición y búsqueda. No equivalen todavía a sistemas especializados de rutinas con ejercicios prescritos, envío de correos, reservas con cupos ni documentos electrónicos DIAN.
 - Los módulos de kardex y movimientos de inventario son de consulta. La creación de ajustes de stock con aprobación y motivo queda pendiente de una operación transaccional específica.
 
 ### Migración adicional
 
-Si ya existe un proyecto Supabase, ejecutar también `supabase/migrations/202611080002_gym_records.sql` después de la migración inicial para habilitar los módulos auxiliares. No basta con publicar GitHub Pages: Supabase debe estar configurado y autenticado para sincronización compartida.
+Si ya existe un proyecto Supabase, ejecutar las migraciones 0002 y 0003 después de la inicial para habilitar los módulos auxiliares, el catálogo de imágenes y el reinicio del entorno de pruebas. No basta con publicar GitHub Pages: Supabase debe estar configurado y autenticado para sincronización compartida.
 
 ## 1. Ejecutar en local
 
@@ -38,7 +42,7 @@ Para modo local sin backend, deja vacías las variables de Supabase. Se mostrar�
 ## 2. Crear el backend Supabase
 
 1. Crear un proyecto en Supabase.
-2. Abrir **SQL Editor** y ejecutar completo `supabase/migrations/202611080001_initial_schema.sql`.
+2. Abrir **SQL Editor** y ejecutar en orden `supabase/migrations/202611080001_initial_schema.sql`, `supabase/migrations/202611080002_gym_records.sql` y `supabase/migrations/202611080003_pos_catalog_images_reset.sql`.
 3. En **Authentication → Users**, crear el usuario propietario con correo y contraseña.
 4. Ejecutar al final del SQL (sustituyendo el correo):
    ```sql
@@ -83,7 +87,9 @@ Desde Configuración se puede exportar un archivo JSON de respaldo del almacenam
 - Pausar una membresía vigente y reactivarla comprobando que la fecha final se compense por los días pausados.
 - Registrar entrada de socio y pase diario (sin crear miembro permanente).
 - Registrar pagos parciales, consultar Cuentas por Cobrar Pagos y cobrar saldos pendientes sin duplicar movimientos.
-- Vender dos productos; comprobar existencias y detalle de venta.
+- Cobrar una entrada general sin registrar cliente; verificar asistencia, caja y movimiento.
+- Crear un producto con foto, categoría, precio y existencia inicial; verificar que aparece como tarjeta en catálogo y punto de venta.
+- Vender dos productos sin identificar comprador; comprobar detalle de venta, saldo e inventario.
 - Registrar compra y verificar entrada de inventario.
 - Registrar gasto y comparar efectivo esperado.
 - Abrir/cerrar caja y validar diferencia.
