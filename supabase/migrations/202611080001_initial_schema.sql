@@ -289,7 +289,7 @@ drop policy if exists staff_insert_plans on public.plans;
 drop policy if exists owner_insert_plans on public.plans;
 create policy owner_insert_plans on public.plans for insert to authenticated with check (public.is_owner());
 
-do $
+do $$
 declare t text;
 begin
   foreach t in array array['profiles','plans','members','payments','attendance','day_passes','products','sales','sale_items','stock_movements','purchases','purchase_items','expenses','cash_sessions','cash_movements'] loop
