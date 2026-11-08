@@ -33,7 +33,7 @@ const statuses = [{ value: 'active', label: 'Activo' }, { value: 'inactive', lab
 const currency = new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 })
 const formatMoney = (value: unknown) => currency.format(Number(value || 0))
 const formatDate = (value: unknown) => value ? new Date(String(value)).toLocaleDateString('es-CO') : '—'
-const today = () => new Date().toISOString().slice(0, 10)
+const today = () => { const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10) }
 
 function configFor(section: Section, rows: Record<string, Row[]>): ModuleConfig | null {
   const memberOptions = (rows.members || []).map(m => ({ value: m.id, label: m.full_name }))
@@ -237,7 +237,7 @@ export default function App() {
     const id = makeId()
     const items = saleLines.map(line => {
       const product = rows.products?.find(p => p.id === line.product_id)!
-      return { id: makeId(), product_id: product.id, quantity: line.quantity, unit_price: Number(product.price), line_total: Number(product.price) * line.quantity }
+      return { id: makeId(), stock_movement_id: makeId(), product_id: product.id, quantity: line.quantity, unit_price: Number(product.price), line_total: Number(product.price) * line.quantity }
     })
     const total = items.reduce((sum, item) => sum + item.line_total, 0)
     const insufficient = items.find(item => Number(rows.products?.find(p => p.id === item.product_id)?.stock || 0) < item.quantity)
@@ -251,7 +251,7 @@ export default function App() {
       optimistic.push({ table: 'sale_items', row: { ...item, sale_id: id, created_at: nowIso() } })
       const product = rows.products?.find(p => p.id === item.product_id)
       if (product) optimistic.push({ table: 'products', row: { ...product, stock: Math.max(0, Number(product.stock) - item.quantity), updated_at: nowIso() } })
-      optimistic.push({ table: 'stock_movements', row: { id: makeId(), product_id: item.product_id, movement_type: 'sale', quantity: -item.quantity, reference_id: id, created_by: session?.user.id || null, created_at: nowIso() } })
+      optimistic.push({ table: 'stock_movements', row: { id: item.stock_movement_id, product_id: item.product_id, movement_type: 'sale', quantity: -item.quantity, reference_id: id, created_by: session?.user.id || null, created_at: nowIso() } })
     })
     setBusy(true)
     const result = await runBusinessRpc('complete_sale', { p_sale: sale, p_items: items }, optimistic)
@@ -262,7 +262,7 @@ export default function App() {
     event.preventDefault()
     if (!purchaseLines.length) { notify('Agrega al menos un producto comprado.'); return }
     const id = makeId()
-    const items = purchaseLines.map(line => ({ id: makeId(), product_id: line.product_id, quantity: line.quantity, unit_cost: line.unit_cost }))
+    const items = purchaseLines.map(line => ({ id: makeId(), stock_movement_id: makeId(), product_id: line.product_id, quantity: line.quantity, unit_cost: line.unit_cost }))
     const total_amount = items.reduce((sum, item) => sum + item.quantity * item.unit_cost, 0)
     const cashMovementId = makeId()
     const purchase: Row = { id, cash_movement_id: cashMovementId, supplier: form.supplier || null, description: form.description, total_amount, amount_paid: Number(form.amount_paid || 0), method: form.method || 'cash', purchased_at: nowIso(), notes: form.notes || null, created_by: session?.user.id || null, created_at: nowIso() }
@@ -272,7 +272,7 @@ export default function App() {
       optimistic.push({ table: 'purchase_items', row: { ...item, purchase_id: id, created_at: nowIso() } })
       const product = rows.products?.find(p => p.id === item.product_id)
       if (product) optimistic.push({ table: 'products', row: { ...product, stock: Number(product.stock) + item.quantity, cost: item.unit_cost, updated_at: nowIso() } })
-      optimistic.push({ table: 'stock_movements', row: { id: makeId(), product_id: item.product_id, movement_type: 'purchase', quantity: item.quantity, reference_id: id, created_by: session?.user.id || null, created_at: nowIso() } })
+      optimistic.push({ table: 'stock_movements', row: { id: item.stock_movement_id, product_id: item.product_id, movement_type: 'purchase', quantity: item.quantity, reference_id: id, created_by: session?.user.id || null, created_at: nowIso() } })
     })
     setBusy(true)
     const result = await runBusinessRpc('receive_purchase', { p_purchase: purchase, p_items: items }, optimistic)

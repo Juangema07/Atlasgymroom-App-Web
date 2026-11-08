@@ -31,6 +31,7 @@ export async function listRows(table: EntityTable): Promise<Row[]> {
 export async function saveRow(table: EntityTable, input: Row): Promise<SaveResult> {
   const stamp = nowIso()
   const row = { ...input, updated_at: stamp, created_at: input.created_at ?? stamp }
+  const previous = await entityStore(table).get(row.id)
   await entityStore(table).put(row)
 
   if (!supabaseConfigured || !supabase) return { synced: false, localOnly: true, message: 'Guardado solo en este dispositivo.' }
@@ -42,8 +43,13 @@ export async function saveRow(table: EntityTable, input: Row): Promise<SaveResul
 
   const { error } = await supabase.from(table).upsert(row, { onConflict: 'id' })
   if (error) {
-    await enqueue({ id: makeId(), kind: 'upsert', table, payload: row, created_at: stamp })
-    return { synced: false, message: `Guardado localmente; sincronización pendiente: ${error.message}` }
+    if (!('code' in error) || !error.code) {
+      await enqueue({ id: makeId(), kind: 'upsert', table, payload: row, created_at: stamp })
+      return { synced: false, message: `Guardado localmente; sincronización pendiente: ${error.message}` }
+    }
+    if (previous) await entityStore(table).put(previous)
+    else await entityStore(table).delete(row.id)
+    return { synced: false, message: `El servidor rechazó el registro y no lo guardó: ${error.message}` }
   }
   return { synced: true }
 }
@@ -54,6 +60,7 @@ export async function runBusinessRpc(
   optimistic: Array<{ table: EntityTable; row: Row }> = [],
 ): Promise<SaveResult> {
   const stamp = nowIso()
+  const previous = await Promise.all(optimistic.map(async item => ({ table: item.table, id: item.row.id, row: await entityStore(item.table).get(item.row.id) })))
   for (const item of optimistic) await entityStore(item.table).put(item.row)
 
   if (!supabaseConfigured || !supabase) return { synced: false, localOnly: true, message: 'Movimiento guardado solo en este dispositivo.' }
@@ -67,8 +74,12 @@ export async function runBusinessRpc(
   const { error } = await supabase.rpc(rpc, args)
   if (error) {
     // El identificador del movimiento viaja en los argumentos. Las funciones SQL son idempotentes.
-    await enqueue({ id: makeId(), kind: 'rpc', payload: { rpc, args }, created_at: stamp })
-    return { synced: false, message: `Movimiento local; sincronización pendiente: ${error.message}` }
+    if (!('code' in error) || !error.code) {
+      await enqueue({ id: makeId(), kind: 'rpc', payload: { rpc, args }, optimistic: optimistic.map(item => ({ table: item.table, id: item.row.id })), created_at: stamp })
+      return { synced: false, message: `Movimiento local; sincronización pendiente: ${error.message}` }
+    }
+    for (const item of previous) { if (item.row) await entityStore(item.table).put(item.row); else await entityStore(item.table).delete(item.id) }
+    return { synced: false, message: `El servidor rechazó la operación: ${error.message}` }
   }
   return { synced: true }
 }

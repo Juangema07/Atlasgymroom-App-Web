@@ -252,7 +252,11 @@ begin
   if TG_OP = 'DELETE' then return OLD; else return NEW; end if;
 end $$;
 
-do $$
+drop policy if exists staff_insert_plans on public.plans;
+drop policy if exists owner_insert_plans on public.plans;
+create policy owner_insert_plans on public.plans for insert to authenticated with check (public.is_owner());
+
+do $
 declare t text;
 begin
   foreach t in array array['plans','members','payments','attendance','day_passes','products','sales','sale_items','stock_movements','purchases','purchase_items','expenses','cash_sessions','cash_movements'] loop
@@ -289,7 +293,7 @@ begin
   if paid >= amt and amt > 0 and plid is not null then
     select duration_days into plan_days from public.plans where id=plid;
     if plan_days is null then raise exception 'Plan no encontrado'; end if;
-    select case when end_date >= current_date then end_date + 1 else current_date end
+    select case when end_date >= timezone('America/Bogota', now())::date then end_date + 1 else timezone('America/Bogota', now())::date end
       into start_on from public.members where id=mid for update;
     update public.members set current_plan_id=plid, start_date=start_on,
       end_date=start_on + plan_days, status='active', updated_at=now() where id=mid;
@@ -320,10 +324,10 @@ begin
     if stock_now is null then raise exception 'Producto no encontrado'; end if;
     if stock_now < qty then raise exception 'Existencia insuficiente para uno de los productos'; end if;
     update public.products set stock=stock-qty,updated_at=now() where id=pid;
-    insert into public.sale_items(sale_id,product_id,quantity,unit_price,line_total)
-    values(sid,pid,qty,price,qty*price);
-    insert into public.stock_movements(product_id,movement_type,quantity,reference_id,created_by)
-    values(pid,'sale',-qty,sid,auth.uid());
+    insert into public.sale_items(id,sale_id,product_id,quantity,unit_price,line_total)
+    values(coalesce(nullif(item->>'id','')::uuid,gen_random_uuid()),sid,pid,qty,price,qty*price);
+    insert into public.stock_movements(id,product_id,movement_type,quantity,reference_id,created_by)
+    values(coalesce(nullif(item->>'stock_movement_id','')::uuid,gen_random_uuid()),pid,'sale',-qty,sid,auth.uid());
   end loop;
   if paid>0 then
     insert into public.cash_movements(id,cash_session_id,direction,amount,method,description,reference_id,created_by)
@@ -383,9 +387,9 @@ begin
     if qty<=0 then raise exception 'Cantidad de compra inválida'; end if;
     update public.products set stock=stock+qty,cost=cost,updated_at=now() where id=pid;
     if not found then raise exception 'Producto de compra no encontrado'; end if;
-    insert into public.purchase_items(purchase_id,product_id,quantity,unit_cost) values(purid,pid,qty,cost);
-    insert into public.stock_movements(product_id,movement_type,quantity,reference_id,created_by)
-    values(pid,'purchase',qty,purid,auth.uid());
+    insert into public.purchase_items(id,purchase_id,product_id,quantity,unit_cost) values(coalesce(nullif(item->>'id','')::uuid,gen_random_uuid()),purid,pid,qty,cost);
+    insert into public.stock_movements(id,product_id,movement_type,quantity,reference_id,created_by)
+    values(coalesce(nullif(item->>'stock_movement_id','')::uuid,gen_random_uuid()),pid,'purchase',qty,purid,auth.uid());
   end loop;
   if coalesce((p_purchase->>'amount_paid')::numeric,0)>0 then
     insert into public.cash_movements(id,cash_session_id,direction,amount,method,description,reference_id,created_by)

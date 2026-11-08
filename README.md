@@ -4,6 +4,8 @@ Aplicación de administración para un gimnasio de una sede. Incluye panel, soci
 
 ## Estado y límites importantes
 
+**Aviso de privacidad:** el repositorio está actualmente configurado como público. Antes de introducir datos personales, claves o información interna, cámbialo a privado desde GitHub Settings → General → Danger Zone → Change repository visibility. No se han subido claves ni datos de socios.
+
 - La interfaz y los flujos principales están implementados.
 - Con configuración Supabase: autenticación por usuario, base PostgreSQL, RLS y operaciones de negocio transaccionales.
 - Sin configurar Supabase: funciona en modo local usando IndexedDB del navegador. Los datos quedan únicamente en ese dispositivo y **no tienen autenticación multiusuario ni respaldo remoto**.
