@@ -2,9 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { FormEvent, ReactNode } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import {
-  Activity, ArrowDownRight, ArrowUpRight, BarChart3, Bell, CalendarDays,
-  Check, ChevronDown, CircleDollarSign, ClipboardList, Cloud, CloudOff,
-  CreditCard, Download, Dumbbell, FileDown, FileUp, Home, LogOut, Menu,
+  Activity, ArrowDownRight, ArrowUpRight, BarChart3, CalendarDays,
+  Check, CircleDollarSign, ClipboardList, Cloud, CloudOff,
+  Download, Dumbbell, FileDown, FileUp, Home, LogOut, Menu,
   Package, Plus, RefreshCw, Search, Settings, Shield, ShoppingBag, Users,
   Wallet, X, Pencil, Receipt, AlertTriangle, UserRound, Boxes, LockKeyhole,
 } from 'lucide-react'
@@ -16,7 +16,7 @@ import {
 import { makeId, nowIso, type EntityTable, type Row } from './lib/localdb'
 
 type Section = 'Inicio' | 'Miembros' | 'Planes' | 'Asistencia' | 'Pase diario' | 'Pagos' | 'Ventas' | 'Productos' | 'Compras' | 'Gastos' | 'Caja' | 'Informes' | 'Equipo' | 'Auditoría' | 'Configuración'
-type Field = { key: string; label: string; type?: string; required?: boolean; placeholder?: string; options?: { value: string; label: string }[] }
+type Field = { key: string; label: string; type?: string; required?: boolean; disabled?: boolean; placeholder?: string; options?: { value: string; label: string }[] }
 type ModuleConfig = { table: EntityTable; title: string; description: string; fields: Field[]; columns: { key: string; label: string }[] }
 
 const navigation: { label: Section; icon: typeof Home }[] = [
@@ -34,7 +34,6 @@ const currency = new Intl.NumberFormat('es-CO', { style: 'currency', currency: '
 const formatMoney = (value: unknown) => currency.format(Number(value || 0))
 const formatDate = (value: unknown) => value ? new Date(String(value)).toLocaleDateString('es-CO') : '—'
 const today = () => new Date().toISOString().slice(0, 10)
-const todayStart = () => new Date(new Date().setHours(0, 0, 0, 0)).toISOString()
 
 function configFor(section: Section, rows: Record<string, Row[]>): ModuleConfig | null {
   const memberOptions = (rows.members || []).map(m => ({ value: m.id, label: m.full_name }))
@@ -171,7 +170,7 @@ export default function App() {
   async function submitRecord(event: FormEvent) {
     event.preventDefault()
     if (!moduleConfig) return
-    const row: Row = { ...(editing || {}), id: editing?.id || makeId(), ...form, created_by: session?.user.id || null, updated_at: nowIso() }
+    const row: Row = { ...(editing || {}), id: editing?.id || makeId(), ...Object.fromEntries(Object.entries(form).map(([key,value]) => [key, value === '' ? null : value])), created_by: session?.user.id || null, updated_at: nowIso() }
     for (const field of moduleConfig.fields) {
       if (field.type === 'number') row[field.key] = Number(form[field.key] || 0)
       if (field.key === 'active' || field.key === 'status' && section === 'Planes') row[field.key] = form[field.key] === 'true'
@@ -182,6 +181,7 @@ export default function App() {
     if (section === 'Planes') row.active = form.active !== 'false'
     setBusy(true)
     const result = await saveRow(moduleConfig.table, row)
+    if (section === 'Productos' && !editing && Number(row.stock) > 0) await saveRow('stock_movements', { id: makeId(), product_id: row.id, movement_type: 'adjustment', quantity: Number(row.stock), notes: 'Existencia inicial', created_by: session?.user.id || null, created_at: nowIso() })
     setBusy(false); setDialog(null); notify(result.message || (result.synced ? 'Registro guardado y sincronizado.' : 'Registro guardado localmente.'))
     await refresh()
   }
@@ -321,12 +321,11 @@ export default function App() {
 
   if (authLoading) return <div className="auth-screen"><div className="auth-card"><div className="brand-mark"><Dumbbell/></div><p>Comprobando acceso seguro…</p></div></div>
   if (supabaseConfigured && !session) return <Login onSignIn={signIn} busy={busy} toast={toast} />
-  const recentPayments = rows.payments || []
-  const members = rows.members || []
+    const members = rows.members || []
   const activeMembers = members.filter(m => m.status === 'active' && (!m.end_date || m.end_date >= today())).length
   const expiredMembers = members.filter(m => m.end_date && m.end_date < today()).length
   const todayPayments = recentPayments.filter(p => String(p.paid_at || p.created_at || '').slice(0,10) === today())
-  const todayIncome = todayPayments.reduce((sum,p) => sum + Number(p.amount_paid || 0), 0) + (rows.sales || []).filter(s => String(s.sold_at || '').slice(0,10) === today()).reduce((sum,s) => sum + Number(s.amount_paid || 0),0)
+  const todayIncome = todayPayments.reduce((sum,p) => sum + Number(p.amount_paid || 0), 0) + (rows.sales || []).filter(s => String(s.sold_at || '').slice(0,10) === today()).reduce((sum,s) => sum + Number(s.amount_paid || 0),0) + (rows.day_passes || []).filter(p => String(p.visited_at || '').slice(0,10) === today()).reduce((sum,p) => sum + Number(p.amount || 0),0)
   const stockLow = (rows.products || []).filter(p => Number(p.stock) <= Number(p.min_stock || 0))
   const userLabel = profile?.full_name || session?.user.email || 'Administrador local'
 
@@ -357,7 +356,7 @@ export default function App() {
 
     {dialog && dialog !== 'cash' && <Modal title={dialogTitle(dialog, editing)} onClose={() => setDialog(null)}>
       {dialog === 'record' && moduleConfig && <form className="form-grid" onSubmit={submitRecord}>
-        {moduleConfig.fields.map(field => <FieldInput key={field.key} field={field} value={form[field.key] || ''} onChange={value => setForm(v => ({ ...v, [field.key]: value }))} />)}
+        {moduleConfig.fields.map(field => <FieldInput key={field.key} field={moduleConfig.table === 'products' && editing && field.key === 'stock' ? { ...field, disabled: true } : field} value={form[field.key] || ''} onChange={value => setForm(v => ({ ...v, [field.key]: value }))} />)}
         <div className="form-actions"><button type="button" className="secondary-button" onClick={() => setDialog(null)}>Cancelar</button><button disabled={busy} className="primary-button"><Check size={16}/>{busy ? 'Guardando…' : 'Guardar registro'}</button></div>
       </form>}
       {dialog === 'payment' && <form className="form-grid" onSubmit={submitPayment}>
@@ -432,7 +431,7 @@ function Dashboard(props: { activeMembers: number; expiredMembers: number; total
   </>
 }
 
-function DataModule({ config, rows, allRows, search, setSearch, onCreate, onEdit, memberName, productName, planName }: { config: ModuleConfig; rows: Row[]; allRows:Record<string,Row[]>; search:string; setSearch:(v:string)=>void; onCreate:()=>void; onEdit:(row:Row)=>void; memberName:(id:unknown)=>string; productName:(id:unknown)=>string; planName:(id:unknown)=>string }) {
+function DataModule({ config, rows, search, setSearch, onCreate, onEdit, memberName, productName, planName }: { config: ModuleConfig; rows: Row[]; search:string; setSearch:(v:string)=>void; onCreate:()=>void; onEdit:(row:Row)=>void; memberName:(id:unknown)=>string; productName:(id:unknown)=>string; planName:(id:unknown)=>string }) {
   const valueFor = (row:Row,key:string) => {
     const value = row[key]
     if (key === 'member_id') return memberName(value)
@@ -456,7 +455,7 @@ function DataModule({ config, rows, allRows, search, setSearch, onCreate, onEdit
   </>
 }
 
-function CashPage({ session, sessions, movements, onOpen, onClose }: { session?:Row; sessions:Row[]; movements:Row[]; onOpen:()=>void; onClose:()=>void; onOpenSubmit:(e:FormEvent)=>void; onCloseSubmit:(e:FormEvent)=>void; busy:boolean; form:Record<string,string>; setForm:any }) {
+function CashPage({ session, sessions, movements, onOpen, onClose }: { session?:Row; sessions:Row[]; movements:Row[]; onOpen:()=>void; onClose:()=>void }) {
   const currentMovements = session ? movements.filter(m=>m.cash_session_id===session.id) : []
   const cashIncome = currentMovements.filter(m=>m.method==='cash'&&m.direction==='income').reduce((s,m)=>s+Number(m.amount),0)
   const cashExpense = currentMovements.filter(m=>m.method==='cash'&&m.direction==='expense').reduce((s,m)=>s+Number(m.amount),0)
@@ -489,7 +488,7 @@ function Stat({icon,label,value,change,tint}:{icon:ReactNode;label:string;value:
 function Quick({icon,label,onClick}:{icon:ReactNode;label:string;onClick:()=>void}){return <button className="quick-action" onClick={onClick}><span>{icon}</span><strong>{label}</strong><ArrowUpRight size={15}/></button>}
 function Empty({text}:{text:string}){return <div className="empty-state"><ClipboardList size={24}/><p>{text}</p></div>}
 function Modal({title,children,onClose}:{title:string;children:ReactNode;onClose:()=>void}){return <div className="modal-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)onClose()}}><section className="modal"><div className="modal-heading"><h2>{title}</h2><button onClick={onClose}><X size={18}/></button></div>{children}</section></div>}
-function FieldInput({field,value,onChange}:{field:Field;value:string;onChange:(v:string)=>void}){return <label className={field.type==='textarea'?'field full':'field'}>{field.label}{field.type==='select'?<select value={value} onChange={e=>onChange(e.target.value)} required={field.required}><option value="">Seleccionar…</option>{field.options?.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}</select>:field.type==='textarea'?<textarea value={value} onChange={e=>onChange(e.target.value)} placeholder={field.placeholder} required={field.required}/>:<input type={field.type||'text'} value={value} onChange={e=>onChange(e.target.value)} placeholder={field.placeholder} required={field.required} min={field.type==='number'?0:undefined}/>}</label>}
+function FieldInput({field,value,onChange}:{field:Field;value:string;onChange:(v:string)=>void}){return <label className={field.type==='textarea'?'field full':'field'}>{field.label}{field.type==='select'?<select disabled={field.disabled} value={value} onChange={e=>onChange(e.target.value)} required={field.required}><option value="">Seleccionar…</option>{field.options?.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}</select>:field.type==='textarea'?<textarea disabled={field.disabled} value={value} onChange={e=>onChange(e.target.value)} placeholder={field.placeholder} required={field.required}/>:<input disabled={field.disabled} type={field.type||'text'} value={value} onChange={e=>onChange(e.target.value)} placeholder={field.placeholder} required={field.required} min={field.type==='number'?0:undefined}/>}</label>}
 function FormActions({busy,onCancel}:{busy:boolean;onCancel:()=>void}){return <div className="form-actions"><button type="button" className="secondary-button" onClick={onCancel}>Cancelar</button><button disabled={busy} className="primary-button"><Check size={16}/>{busy?'Procesando…':'Confirmar registro'}</button></div>}
 function ProductAdder({options,onAdd}:{options:{value:string;label:string}[];onAdd:(id:string,qty:number)=>void}){const [id,setId]=useState('');const [qty,setQty]=useState('1');return <div className="product-adder"><select value={id} onChange={e=>setId(e.target.value)}><option value="">Selecciona producto…</option>{options.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}</select><input aria-label="Cantidad" type="number" min="1" value={qty} onChange={e=>setQty(e.target.value)}/><button type="button" className="secondary-button" disabled={!id||Number(qty)<1} onClick={()=>{onAdd(id,Number(qty));setId('');setQty('1')}}><Plus size={15}/> Agregar</button></div>}
 function LineList({lines,products,onChange}:{lines:{product_id:string;quantity:number}[];products:Row[];onChange:(v:{product_id:string;quantity:number}[])=>void}){return <div className="cart-lines">{lines.map(line=>{const p=products.find(x=>x.id===line.product_id);return <div key={line.product_id}><span>{p?.name} × {line.quantity}</span><strong>{formatMoney(Number(p?.price||0)*line.quantity)}</strong><button type="button" onClick={()=>onChange(lines.filter(x=>x.product_id!==line.product_id))}><X size={14}/></button></div>})}{!lines.length&&<small>Aún no hay productos agregados.</small>}</div>}
