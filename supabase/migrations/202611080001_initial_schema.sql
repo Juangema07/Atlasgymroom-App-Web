@@ -47,7 +47,7 @@ create table if not exists public.plans (
 create table if not exists public.members (
   id uuid primary key default gen_random_uuid(),
   full_name text not null,
-  document text unique,
+  document text not null unique check (length(trim(document)) > 0),
   phone text,
   email text,
   birth_date date,
@@ -55,6 +55,8 @@ create table if not exists public.members (
   current_plan_id uuid references public.plans(id),
   start_date date,
   end_date date,
+  paused_at date,
+  paused_days integer not null default 0 check (paused_days >= 0),
   notes text,
   created_by uuid references auth.users(id),
   created_at timestamptz not null default now(),
@@ -317,10 +319,49 @@ begin
     select case when end_date >= timezone('America/Bogota', now())::date then end_date + 1 else timezone('America/Bogota', now())::date end
       into start_on from public.members where id=mid for update;
     update public.members set current_plan_id=plid, start_date=start_on,
-      end_date=start_on + plan_days - 1, status='active', updated_at=now() where id=mid;
+      end_date=start_on + plan_days - 1, status='active', paused_at=null, updated_at=now() where id=mid;
   end if;
   return pid;
 end $$;
+
+-- Cobro de saldo pendiente: registra abonos adicionales con un ID estable e idempotente.
+create or replace function public.collect_payment_balance(
+  p_payment_id uuid, p_amount numeric, p_method text, p_cash_movement_id uuid
+) returns jsonb language plpgsql security definer set search_path = public
+as $
+declare pay public.payments%rowtype; due numeric; next_paid numeric; plan_days integer; start_on date;
+begin
+  if not public.is_staff() then raise exception 'No autorizado'; end if;
+  if p_cash_movement_id is null then raise exception 'Falta el identificador del movimiento'; end if;
+  select * into pay from public.payments where id=p_payment_id for update;
+  if not found then raise exception 'No se encontró la cuenta por cobrar'; end if;
+  if exists(select 1 from public.cash_movements where id=p_cash_movement_id) then
+    return jsonb_build_object('payment_id',pay.id,'amount_paid',pay.amount_paid,'status',pay.status);
+  end if;
+  due := pay.amount - pay.amount_paid;
+  if pay.status='voided' or p_amount is null or p_amount<=0 or p_amount>due then
+    raise exception 'El abono no es válido o supera el saldo pendiente';
+  end if;
+  next_paid := pay.amount_paid + p_amount;
+  insert into public.cash_movements(id,cash_session_id,direction,amount,method,description,reference_id,created_by)
+  values(p_cash_movement_id,(select id from public.cash_sessions where status='open' limit 1),
+    'income',p_amount,p_method,'Abono a cuenta por cobrar',pay.id,auth.uid());
+  update public.payments set amount_paid=next_paid,
+    status=case when next_paid>=amount then 'paid' else 'partial' end,
+    paid_at=case when next_paid>=amount then now() else paid_at end,updated_at=now()
+  where id=pay.id;
+  if next_paid>=pay.amount and pay.plan_id is not null then
+    select duration_days into plan_days from public.plans where id=pay.plan_id;
+    if plan_days is null then raise exception 'No se encontró la tarifa asociada'; end if;
+    select case when end_date >= timezone('America/Bogota',now())::date and status='active'
+      then end_date+1 else timezone('America/Bogota',now())::date end
+    into start_on from public.members where id=pay.member_id for update;
+    update public.members set current_plan_id=pay.plan_id,start_date=start_on,
+      end_date=start_on+plan_days-1,status='active',paused_at=null,updated_at=now()
+      where id=pay.member_id;
+  end if;
+  return jsonb_build_object('payment_id',pay.id,'amount_paid',next_paid,'status',case when next_paid>=pay.amount then 'paid' else 'partial' end);
+end $;
 
 create or replace function public.complete_sale(p_sale jsonb, p_items jsonb)
 returns uuid language plpgsql security definer set search_path = public
@@ -517,6 +558,19 @@ begin
   return jsonb_build_object('expected_cash',expected,'counted_cash',p_counted_cash,'difference',diff);
 end $$;
 
+-- Tarifas iniciales del gimnasio. Los tickets quedan inactivos hasta configurar su precio real.
+insert into public.plans (id,name,duration_days,price,active,notes)
+select v.id::uuid,v.name,v.duration_days,v.price,v.active,v.notes
+from (values
+  ('10000000-0000-4000-8000-000000000001','Diario',1,4000::numeric,true,'Acceso por un día'),
+  ('10000000-0000-4000-8000-000000000002','Quincenal',15,30000::numeric,true,'Tarifa por 15 días'),
+  ('10000000-0000-4000-8000-000000000003','Mensual',30,60000::numeric,true,'Tarifa por 30 días'),
+  ('10000000-0000-4000-8000-000000000004','Ticket 5 días',5,0::numeric,false,'Definir precio y activar antes de vender'),
+  ('10000000-0000-4000-8000-000000000005','Ticket 10 días',10,0::numeric,false,'Definir precio y activar antes de vender'),
+  ('10000000-0000-4000-8000-000000000006','Ticket 15 días',15,0::numeric,false,'Definir precio y activar antes de vender')
+) as v(id,name,duration_days,price,active,notes)
+where not exists (select 1 from public.plans p where lower(p.name)=lower(v.name));
+
 -- RLS: el cliente nunca recibe privilegios administrativos por tener la publishable key.
 alter table public.profiles enable row level security;
 alter table public.plans enable row level security;
@@ -603,6 +657,7 @@ grant select on public.payments, public.day_passes, public.sales, public.sale_it
 
 revoke all on function public.create_product(jsonb) from public;
 revoke all on function public.record_membership_payment(jsonb) from public;
+revoke all on function public.collect_payment_balance(uuid,numeric,text,uuid) from public;
 revoke all on function public.complete_sale(jsonb,jsonb) from public;
 revoke all on function public.register_day_pass(jsonb) from public;
 revoke all on function public.record_expense(jsonb) from public;
@@ -615,6 +670,7 @@ grant execute on function public.is_staff() to authenticated;
 grant execute on function public.is_owner() to authenticated;
 grant execute on function public.create_product(jsonb) to authenticated;
 grant execute on function public.record_membership_payment(jsonb) to authenticated;
+grant execute on function public.collect_payment_balance(uuid,numeric,text,uuid) to authenticated;
 grant execute on function public.complete_sale(jsonb,jsonb) to authenticated;
 grant execute on function public.register_day_pass(jsonb) to authenticated;
 grant execute on function public.record_expense(jsonb) to authenticated;

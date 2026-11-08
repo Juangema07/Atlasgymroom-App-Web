@@ -65,6 +65,14 @@ const navGroups: NavGroup[] = [
 ]
 const methods = [{ value: 'cash', label: 'Efectivo' }, { value: 'transfer', label: 'Transferencia' }, { value: 'nequi', label: 'Nequi' }, { value: 'card', label: 'Datáfono / tarjeta' }, { value: 'other', label: 'Otro' }]
 const statuses = [{ value: 'active', label: 'Activo' }, { value: 'inactive', label: 'Inactivo' }, { value: 'expired', label: 'Vencido' }, { value: 'debt', label: 'Con saldo pendiente' }]
+const defaultTariffs: Row[] = [
+  { id: '10000000-0000-4000-8000-000000000001', name: 'Diario', duration_days: 1, price: 4000, active: true, notes: 'Acceso por un día' },
+  { id: '10000000-0000-4000-8000-000000000002', name: 'Quincenal', duration_days: 15, price: 30000, active: true, notes: 'Tarifa por 15 días' },
+  { id: '10000000-0000-4000-8000-000000000003', name: 'Mensual', duration_days: 30, price: 60000, active: true, notes: 'Tarifa por 30 días' },
+  { id: '10000000-0000-4000-8000-000000000004', name: 'Ticket 5 días', duration_days: 5, price: 0, active: false, notes: 'Definir precio y activar antes de vender' },
+  { id: '10000000-0000-4000-8000-000000000005', name: 'Ticket 10 días', duration_days: 10, price: 0, active: false, notes: 'Definir precio y activar antes de vender' },
+  { id: '10000000-0000-4000-8000-000000000006', name: 'Ticket 15 días', duration_days: 15, price: 0, active: false, notes: 'Definir precio y activar antes de vender' },
+]
 const currency = new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 })
 const formatMoney = (value: unknown) => currency.format(Number(value || 0))
 const bogotaDate = (value: Date) => {
@@ -183,7 +191,11 @@ export default function App() {
       void syncPending().then(() => refresh())
     } else if (!supabaseConfigured) {
       setProfile({ id: 'local-owner', full_name: 'Administrador local', role: 'owner', active: true })
-      void refresh()
+      void (async () => {
+        const currentPlans = await listRows('plans')
+        for (const plan of defaultTariffs) if (!currentPlans.some(row => row.name.toLowerCase() === plan.name.toLowerCase())) await saveRow('plans', { ...plan, created_by: null, created_at: nowIso(), updated_at: nowIso() })
+        await refresh()
+      })()
     } else {
       setRows({})
       setProfile(null)
@@ -240,11 +252,12 @@ export default function App() {
 
   async function toggleMemberPause(member: Row) {
     const isPaused = Boolean(member.paused_at)
+    if (!isPaused && (member.status !== 'active' || (member.end_date && member.end_date < today()))) { notify('Solo puedes congelar una tarifa que esté vigente.'); return }
     let updated: Row
     if (isPaused) {
       const start = new Date(String(member.paused_at) + 'T12:00:00-05:00')
       const end = new Date(today() + 'T12:00:00-05:00')
-      const pausedDays = Math.max(1, Math.floor((end.getTime() - start.getTime()) / 86400000))
+      const pausedDays = Math.max(0, Math.floor((end.getTime() - start.getTime()) / 86400000))
       updated = { ...member, status: 'active', paused_at: null, paused_days: Number(member.paused_days || 0) + pausedDays, end_date: member.end_date ? datePlusDays(String(member.end_date), pausedDays) : null, updated_at: nowIso() }
     } else {
       updated = { ...member, status: 'inactive', paused_at: today(), updated_at: nowIso() }
@@ -517,7 +530,7 @@ export default function App() {
       {dialog === 'balance' && editing && <form className="form-grid" onSubmit={submitBalancePayment}><div className="balance-summary full"><strong>{memberName(editing.member_id)}</strong><span>Saldo pendiente: {formatMoney(Number(editing.amount || 0)-Number(editing.amount_paid || 0))}</span></div><FieldInput field={{ key: 'amount_paid', label: 'Abono recibido (COP)', type: 'number', required: true }} value={form.amount_paid || ''} onChange={v => setForm(f => ({ ...f, amount_paid: v }))}/><FieldInput field={{ key: 'method', label: 'Método de pago', type: 'select', options: methods }} value={form.method || 'cash'} onChange={v => setForm(f => ({ ...f, method: v }))}/><p className="form-hint full">Solo registra transferencias o Nequi después de confirmar el abono en la cuenta. El abono no debe superar el saldo pendiente.</p><FormActions busy={busy} onCancel={() => setDialog(null)}/></form>}
       {dialog === 'payment' && <form className="form-grid" onSubmit={submitPayment}>
         <FieldInput field={{ key: 'member_id', label: 'Socio', type: 'select', options: memberOptions, required: true }} value={form.member_id || ''} onChange={v => { const member = rows.members?.find(m => m.id === v); const plan = rows.plans?.find(p => p.id === member?.current_plan_id && p.active !== false); setForm(f => ({ ...f, member_id: v, plan_id: plan?.id || '', amount: plan ? String(plan.price) : f.amount, amount_paid: plan ? String(plan.price) : f.amount_paid })) }}/>
-        <FieldInput field={{ key: 'plan_id', label: 'Plan a renovar', type: 'select', options: (rows.plans || []).filter(p => p.active !== false).map(p => ({ value: p.id, label: p.name })) }} value={form.plan_id || ''} onChange={v => { const plan = rows.plans?.find(p => p.id === v); setForm(f => ({ ...f, plan_id: v, amount: plan ? String(plan.price) : f.amount, amount_paid: plan ? String(plan.price) : f.amount_paid })) }}/>
+        <FieldInput field={{ key: 'plan_id', label: 'Tarifa', type: 'select', required: true, options: (rows.plans || []).filter(p => p.active !== false).map(p => ({ value: p.id, label: p.name })) }} value={form.plan_id || ''} onChange={v => { const plan = rows.plans?.find(p => p.id === v); setForm(f => ({ ...f, plan_id: v, amount: plan ? String(plan.price) : f.amount, amount_paid: plan ? String(plan.price) : f.amount_paid })) }}/>
         <FieldInput field={{ key: 'amount', label: 'Valor a cobrar (COP)', type: 'number', required: true }} value={form.amount || ''} onChange={v => setForm(f => ({ ...f, amount: v }))}/>
         <FieldInput field={{ key: 'amount_paid', label: 'Dinero recibido (COP)', type: 'number', required: true }} value={form.amount_paid ?? form.amount ?? ''} onChange={v => setForm(f => ({ ...f, amount_paid: v }))}/>
         <FieldInput field={{ key: 'method', label: 'Método de pago', type: 'select', options: methods }} value={form.method || 'cash'} onChange={v => setForm(f => ({ ...f, method: v }))}/>
@@ -638,7 +651,7 @@ function DataModule({ config, rows, isOwner, search, setSearch, onCreate, onEdit
   }
   const canEdit = config.table === 'members' || (isOwner && (config.table === 'plans' || config.table === 'products'))
   const showActions = canEdit || config.table === 'payments'
-  return <><div className="module-heading"><div><div className="eyebrow">GESTIÓN</div><h1>{config.title}</h1><p>{config.description}</p></div>{config.fields.length > 0 && (config.table !== 'plans' && config.table !== 'products' || isOwner) && <button className="primary-button" onClick={onCreate}><Plus size={16}/> Nuevo registro</button>}{config.table === 'day_passes' && <button className="primary-button" onClick={onCreate}><Plus size={16}/> Nuevo pase</button>}{config.table === 'payments' && <button className="primary-button" onClick={onCreate}><Plus size={16}/> Registrar pago</button>}{config.table === 'sales' && <button className="primary-button" onClick={onCreate}><Plus size={16}/> Nueva venta</button>}{config.table === 'purchases' && <button className="primary-button" onClick={onCreate}><Plus size={16}/> Registrar compra</button>}{config.table === 'expenses' && <button className="primary-button" onClick={onCreate}><Plus size={16}/> Registrar gasto</button>}</div>
+  return <><div className="module-heading"><div><div className="eyebrow">GESTIÓN</div><h1>{config.title}</h1><p>{config.description}</p></div>{config.fields.length > 0 && config.title !== 'Congelar pagos' && (config.table !== 'plans' && config.table !== 'products' || isOwner) && <button className="primary-button" onClick={onCreate}><Plus size={16}/> Nuevo registro</button>}{config.table === 'day_passes' && <button className="primary-button" onClick={onCreate}><Plus size={16}/> Nuevo pase</button>}{config.table === 'payments' && <button className="primary-button" onClick={onCreate}><Plus size={16}/> Registrar pago</button>}{config.table === 'sales' && <button className="primary-button" onClick={onCreate}><Plus size={16}/> Nueva venta</button>}{config.table === 'purchases' && <button className="primary-button" onClick={onCreate}><Plus size={16}/> Registrar compra</button>}{config.table === 'expenses' && <button className="primary-button" onClick={onCreate}><Plus size={16}/> Registrar gasto</button>}</div>
     <section className="panel data-panel"><div className="table-toolbar"><div className="module-count">{rows.length} registro(s)</div><div className="search-box"><Search size={16}/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar…"/></div></div>
       {rows.length ? <div className="table-wrap"><table><thead><tr>{config.columns.map(c=><th key={c.key}>{c.label}</th>)}{showActions && <th>Acciones</th>}</tr></thead><tbody>{rows.map(row=><tr key={row.id}>{config.columns.map(c=><td key={c.key}>{valueFor(row,c.key)}</td>)}{showActions && <td className="action-cell">{canEdit && <button className="table-action" onClick={()=>onEdit(row)} title="Editar"><Pencil size={14}/></button>}{config.table==='members' && <><button className="table-action" onClick={()=>onMemberPayment(row)} title="Registrar pago"><CircleDollarSign size={14}/></button><button className="table-action" onClick={()=>onTogglePause(row)} title={row.paused_at?'Reactivar actividad':'Pausar actividad'}>{row.paused_at?<Play size={14}/>:<Pause size={14}/>}</button></>}{config.table==='payments' && Number(row.amount||0)>Number(row.amount_paid||0) && row.status!=='voided' && <button className="table-action" onClick={()=>onCollectBalance(row)} title="Cobrar saldo">Abonar</button>}</td>}</tr>)}</tbody></table></div> : <Empty text={search ? 'No hay resultados para esa búsqueda.' : 'Todavía no hay registros en este módulo.'}/>}
     </section>
