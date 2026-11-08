@@ -38,7 +38,6 @@ const today = () => { const d = new Date(); return new Date(d.getTime() - d.getT
 function configFor(section: Section, rows: Record<string, Row[]>): ModuleConfig | null {
   const memberOptions = (rows.members || []).map(m => ({ value: m.id, label: m.full_name }))
   const planOptions = (rows.plans || []).map(p => ({ value: p.id, label: p.name }))
-  const productOptions = (rows.products || []).map(p => ({ value: p.id, label: p.name }))
   const base: Partial<Record<Section, ModuleConfig>> = {
     Miembros: { table: 'members', title: 'Miembros', description: 'Perfiles, estado y vigencia de los socios.', fields: [
       { key: 'full_name', label: 'Nombre completo', required: true }, { key: 'document', label: 'Documento', placeholder: 'Opcional' },
@@ -120,7 +119,7 @@ export default function App() {
       supabase?.from('profiles').select('*').eq('id', session.user.id).maybeSingle().then(({ data }) => setProfile(data))
       void syncPending().then(() => refresh())
     } else if (!supabaseConfigured) {
-      setProfile({ full_name: 'Administrador local', role: 'owner', active: true })
+      setProfile({ id: 'local-owner', full_name: 'Administrador local', role: 'owner', active: true })
       void refresh()
     } else {
       setRows({})
