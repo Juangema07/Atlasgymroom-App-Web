@@ -1,0 +1,9 @@
+{
+  "name": "Atlasgymroom",
+  "short_name": "Atlasgymroom",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#0d110e",
+  "theme_color": "#101411",
+  "lang": "es"
+}
