@@ -5,12 +5,12 @@ import {
   Activity, ArrowDownRight, ArrowUpRight, BarChart3, CalendarDays,
   Check, CircleDollarSign, ClipboardList, Cloud, CloudOff,
   Download, Dumbbell, FileDown, FileUp, Home, LogOut, Menu,
-  Package, Plus, RefreshCw, Search, Settings, Shield, ShoppingBag, Users,
+  Package, Plus, RefreshCw, Search, Settings, Shield, ShoppingBag, ShoppingCart, Users, ImagePlus, Tag, Zap,
   Wallet, X, Pencil, Receipt, AlertTriangle, UserRound, LockKeyhole, Pause, Play,
 } from 'lucide-react'
 import { supabase, supabaseConfigured } from './lib/supabase'
 import {
-  exportLocalBackup, importLocalBackup, listRows, queueStatus, runBusinessRpc,
+  exportLocalBackup, importLocalBackup, listRows, queueStatus, resetLocalTestData, runBusinessRpc,
   saveRow, syncPending, updateRow,
 } from './lib/data'
 import { makeId, nowIso, type EntityTable, type Row } from './lib/localdb'
@@ -134,10 +134,10 @@ function configFor(section: Section, rows: Record<string, Row[]>): ModuleConfig 
     'Pase diario': { table: 'day_passes', title: 'Pases diarios', description: 'Entradas de visitantes sin crear una membresía.', fields: [], columns: [{ key: 'visitor_name', label: 'Visitante' }, { key: 'amount', label: 'Tarifa' }, { key: 'method', label: 'Método' }, { key: 'visited_at', label: 'Fecha' }] },
     Pagos: { table: 'payments', title: 'Pagos y mensualidades', description: 'Historial de cobros, abonos y saldos pendientes.', fields: [], columns: [{ key: 'member_id', label: 'Socio' }, { key: 'amount', label: 'Valor' }, { key: 'amount_paid', label: 'Recibido' }, { key: 'status', label: 'Estado' }, { key: 'paid_at', label: 'Fecha' }] },
     Productos: { table: 'products', title: 'Productos e inventario', description: 'Catálogo, precios, costos y existencias.', fields: [
-      { key: 'name', label: 'Nombre', required: true }, { key: 'sku', label: 'Código / SKU' }, { key: 'description', label: 'Descripción' },
+      { key: 'name', label: 'Nombre del producto', required: true }, { key: 'category', label: 'Categoría', placeholder: 'Bebidas, suplementos, accesorios…' }, { key: 'sku', label: 'Código / SKU' }, { key: 'description', label: 'Descripción' },
       { key: 'cost', label: 'Costo (COP)', type: 'number' }, { key: 'price', label: 'Precio (COP)', type: 'number', required: true },
       { key: 'stock', label: 'Existencias iniciales', type: 'number', required: true }, { key: 'min_stock', label: 'Stock mínimo', type: 'number' },
-    ], columns: [{ key: 'name', label: 'Producto' }, { key: 'stock', label: 'Existencias' }, { key: 'min_stock', label: 'Mínimo' }, { key: 'price', label: 'Precio' }] },
+    ], columns: [{ key: 'name', label: 'Producto' }, { key: 'category', label: 'Categoría' }, { key: 'stock', label: 'Existencias' }, { key: 'min_stock', label: 'Mínimo' }, { key: 'price', label: 'Precio' }] },
     Compras: { table: 'purchases', title: 'Compras', description: 'Registra entradas de mercancía y proveedores.', fields: [], columns: [{ key: 'supplier', label: 'Proveedor' }, { key: 'description', label: 'Descripción' }, { key: 'total_amount', label: 'Total' }, { key: 'purchased_at', label: 'Fecha' }] },
     Gastos: { table: 'expenses', title: 'Gastos y egresos', description: 'Registra salidas y conserva el responsable del movimiento.', fields: [], columns: [{ key: 'category', label: 'Categoría' }, { key: 'description', label: 'Concepto' }, { key: 'amount', label: 'Valor' }, { key: 'method', label: 'Método' }, { key: 'expense_date', label: 'Fecha' }] },
     Ventas: { table: 'sales', title: 'Punto de venta', description: 'Agrega productos al carrito y confirma la venta.', fields: [], columns: [{ key: 'id', label: 'Venta' }, { key: 'total', label: 'Total' }, { key: 'amount_paid', label: 'Recibido' }, { key: 'status', label: 'Estado' }, { key: 'sold_at', label: 'Fecha' }] },
@@ -171,10 +171,12 @@ export default function App() {
   const [syncCount, setSyncCount] = useState(0)
   const [saleLines, setSaleLines] = useState<{ product_id: string; quantity: number }[]>([])
   const [purchaseLines, setPurchaseLines] = useState<{ product_id: string; quantity: number; unit_cost: number }[]>([])
+  const [productImageFile, setProductImageFile] = useState<File | null>(null)
+  const [productImagePreview, setProductImagePreview] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
 
   const refresh = useCallback(async () => {
-    const names: EntityTable[] = ['profiles','plans','members','payments','attendance','day_passes','products','sales','sale_items','stock_movements','purchases','purchase_items','expenses','cash_sessions','cash_movements','audit_logs']
+    const names: EntityTable[] = ['profiles','plans','members','payments','attendance','day_passes','products','sales','sale_items','stock_movements','purchases','purchase_items','expenses','cash_sessions','cash_movements','audit_logs','gym_records']
     const values = await Promise.all(names.map(async name => [name, await listRows(name)] as const))
     setRows(Object.fromEntries(values))
     const queue = await queueStatus()
@@ -245,13 +247,14 @@ export default function App() {
   function openRecord(edit?: Row) {
     if (!moduleConfig) return
     setEditing(edit || null)
+    setProductImageFile(null); setProductImagePreview(edit?.image_url || '')
     const initial: Record<string, string> = {}
     moduleConfig.fields.forEach(f => { initial[f.key] = edit?.[f.key] == null ? '' : String(edit[f.key]) })
     setForm(initial)
     setDialog('record')
   }
   function openSpecial(which: NonNullable<typeof dialog>) {
-    setEditing(null); setForm(which === 'daypass' ? { amount: '4000', method: 'cash' } : {}); setSaleLines([]); setPurchaseLines([]); setDialog(which)
+    setEditing(null); setProductImageFile(null); setProductImagePreview(''); setForm(which === 'daypass' ? { visitor_name: 'Entrada general', amount: '4000', method: 'cash' } : {}); setSaleLines([]); setPurchaseLines([]); setDialog(which)
   }
 
   function openMemberPayment(member: Row) {
@@ -312,7 +315,7 @@ export default function App() {
       if (members.some(m => String(m.document || '').replace(/\\s+/g, '') === document && m.id !== row.id)) { notify('Ya existe un cliente registrado con esa cédula.'); return }
       row.document = document
     }
-    if (section === 'Productos') { row.stock = Number(row.stock || 0); row.min_stock = Number(row.min_stock || 0); row.cost = Number(row.cost || 0); row.active = true }
+    if (section === 'Productos') { row.stock = Number(row.stock || 0); row.min_stock = Number(row.min_stock || 0); row.cost = Number(row.cost || 0); row.price = Number(row.price || 0); row.category = String(row.category || 'Otros').trim() || 'Otros'; row.active = true }
     if (section === 'Asistencia') {
       row.member_id ||= null; row.visitor_name ||= null; row.entry_type ||= row.member_id ? 'member' : 'day_pass'
       if (row.member_id) { const linked = rows.members?.find(m => m.id === row.member_id); if (!linked || linked.status !== 'active' || linked.paused_at || !linked.current_plan_id || !linked.end_date || linked.end_date < today()) { notify('El cliente no tiene una tarifa vigente.'); return } if ((rows.attendance || []).some(a => a.member_id === row.member_id && dateInBogota(a.entered_at) === today())) { notify('Este cliente ya tiene una entrada registrada hoy.'); return } }
@@ -322,6 +325,22 @@ export default function App() {
     if (section === 'Planes') row.active = form.active !== 'false'
     if (moduleConfig.table === 'gym_records') { row.record_type = section; row.amount = Number(row.amount || 0) }
     setBusy(true)
+    if (section === 'Productos' && productImageFile) {
+      try {
+        const blob = await compressProductImage(productImageFile)
+        if (supabaseConfigured && supabase) {
+          if (!navigator.onLine) throw new Error('Conéctate a Internet para subir la imagen del producto.')
+          const path = `${row.id}/${makeId()}.webp`
+          const { data: uploaded, error } = await supabase.storage.from('product-images').upload(path, blob, { contentType: 'image/webp', upsert: false })
+          if (error) throw error
+          row.image_url = supabase.storage.from('product-images').getPublicUrl(uploaded.path).data.publicUrl
+        } else {
+          row.image_url = await blobToDataUrl(blob)
+        }
+      } catch (error) {
+        setBusy(false); notify(error instanceof Error ? error.message : 'No se pudo procesar la imagen.'); return
+      }
+    }
     const stockMovementId = makeId()
     const result = section === 'Productos' && !editing
       ? await runBusinessRpc('create_product', { p_product: { ...row, stock_movement_id: stockMovementId } }, [
@@ -333,7 +352,7 @@ export default function App() {
         : section === 'Asistencia'
           ? await runBusinessRpc('register_attendance', { p_attendance: row }, [{ table: 'attendance', row }])
           : await saveRow(moduleConfig.table, row)
-    setBusy(false); setDialog(null); notify(result.message || (result.synced ? 'Registro guardado y sincronizado.' : 'Registro guardado localmente.'))
+    setBusy(false); setDialog(null); setProductImageFile(null); setProductImagePreview(''); notify(result.message || (result.synced ? 'Registro guardado y sincronizado.' : 'Registro guardado localmente.'))
     await refresh()
   }
 
@@ -390,8 +409,10 @@ export default function App() {
     event.preventDefault()
     const id = makeId()
     const attendanceId = makeId(), cashMovementId = makeId()
-    const pass: Row = { id, attendance_id: attendanceId, cash_movement_id: cashMovementId, visitor_name: form.visitor_name, amount: Number(form.amount || 0), method: form.method || 'cash', notes: form.notes || null, visited_at: nowIso(), created_by: session?.user.id || null, created_at: nowIso() }
-    const attendance: Row = { id: attendanceId, member_id: null, visitor_name: pass.visitor_name, entry_type: 'day_pass', entered_at: nowIso(), created_by: session?.user.id || null, created_at: nowIso() }
+    if (Number(form.amount || 0) <= 0) { notify('El valor de la entrada debe ser mayor que cero.'); return }
+    const visitorName = String(form.visitor_name || '').trim() || 'Entrada general'
+    const pass: Row = { id, attendance_id: attendanceId, cash_movement_id: cashMovementId, visitor_name: visitorName, amount: Number(form.amount || 0), method: form.method || 'cash', notes: form.notes || null, visited_at: nowIso(), created_by: session?.user.id || null, created_at: nowIso() }
+    const attendance: Row = { id: attendanceId, member_id: null, visitor_name: visitorName, entry_type: 'day_pass', entered_at: nowIso(), created_by: session?.user.id || null, created_at: nowIso() }
     setBusy(true)
     const optimistic: { table: EntityTable; row: Row }[] = [{ table: 'day_passes', row: pass }, { table: 'attendance', row: attendance }]
     if (Number(pass.amount) > 0) optimistic.push({ table: 'cash_movements', row: { id: cashMovementId, cash_session_id: activeSession?.id || null, direction: 'income', amount: Number(pass.amount), method: pass.method, description: 'Pase diario', reference_id: id, created_by: session?.user.id || null, created_at: nowIso() } })
@@ -422,7 +443,8 @@ export default function App() {
     if (insufficient) { notify('No hay existencias suficientes para uno de los productos.'); return }
     const amount_paid = Number(form.amount_paid === '' || form.amount_paid == null ? total : form.amount_paid)
     const cashMovementId = makeId()
-    const sale: Row = { id, cash_movement_id: cashMovementId, member_id: form.member_id || null, total, amount_paid, method: form.method || 'cash', status: amount_paid === 0 ? 'pending' : amount_paid < total ? 'partial' : 'paid', sold_at: nowIso(), created_by: session?.user.id || null, created_at: nowIso() }
+    if (!Number.isFinite(total) || total <= 0 || !Number.isFinite(amount_paid) || amount_paid < 0 || amount_paid > total) { notify('El dinero recibido debe estar entre cero y el total de la venta.'); return }
+    const sale: Row = { id, cash_movement_id: cashMovementId, member_id: null, total, amount_paid, method: form.method || 'cash', status: amount_paid === 0 ? 'pending' : amount_paid < total ? 'partial' : 'paid', sold_at: nowIso(), created_by: session?.user.id || null, created_at: nowIso() }
     const optimistic: { table: EntityTable; row: Row }[] = [{ table: 'sales', row: sale }]
     if (amount_paid > 0) optimistic.push({ table: 'cash_movements', row: { id: cashMovementId, cash_session_id: activeSession?.id || null, direction: 'income', amount: amount_paid, method: form.method || 'cash', description: 'Venta de productos', reference_id: id, created_by: session?.user.id || null, created_at: nowIso() } })
     items.forEach(item => {
@@ -535,7 +557,8 @@ export default function App() {
         {section === 'Caja' && <CashPage session={activeSession} sessions={rows.cash_sessions || []} movements={rows.cash_movements || []} onOpen={() => openSpecial('cash')} onClose={() => openSpecial('cash')} />}
         {section === 'Informes' && <Reports rows={rows} />}
         {section === 'Configuración' && <SettingsPage onBackup={backup} onRestore={() => fileRef.current?.click()} />}
-        {moduleConfig && <DataModule config={moduleConfig} rows={filteredRows} isOwner={Boolean(isOwner)} search={search} setSearch={setSearch} onCreate={openCreate} onEdit={openRecord} onTogglePause={toggleMemberPause} onMemberPayment={openMemberPayment} onCollectBalance={payment => { setEditing(payment); setForm({ amount_paid: String(Math.max(0, Number(payment.amount || 0) - Number(payment.amount_paid || 0))), method: 'cash' }); setDialog('balance') }} memberName={memberName} productName={productName} planName={planName} />}
+        {section === 'Productos' && <ProductCatalog products={filteredRows} onCreate={openCreate} onEdit={openRecord}/>}
+        {moduleConfig && section !== 'Productos' && <DataModule config={moduleConfig} rows={filteredRows} isOwner={Boolean(isOwner)} search={search} setSearch={setSearch} onCreate={openCreate} onEdit={openRecord} onTogglePause={toggleMemberPause} onMemberPayment={openMemberPayment} onCollectBalance={payment => { setEditing(payment); setForm({ amount_paid: String(Math.max(0, Number(payment.amount || 0) - Number(payment.amount_paid || 0))), method: 'cash' }); setDialog('balance') }} memberName={memberName} productName={productName} planName={planName} />}
         {!moduleConfig && section !== 'Inicio' && section !== 'Caja' && section !== 'Informes' && section !== 'Configuración' && <PlaceholderModule title={section} />}
         {section === 'Equipo' && !isOwner && <AccessDenied/>}
         {section === 'Auditoría' && !isOwner && <AccessDenied/>}
@@ -545,6 +568,7 @@ export default function App() {
 
     {dialog && dialog !== 'cash' && <Modal title={dialogTitle(dialog, editing)} onClose={() => setDialog(null)}>
       {dialog === 'record' && moduleConfig && <form className="form-grid" onSubmit={submitRecord}>
+        {section === 'Productos' && <div className="image-upload-panel full"><div className="product-image-preview">{productImagePreview ? <img src={productImagePreview} alt="Vista previa del producto"/> : <div><ImagePlus size={30}/><span>Imagen del producto</span></div>}</div><label className="image-upload-control"><ImagePlus size={16}/> Elegir imagen<input type="file" accept="image/*" onChange={e=>{const file=e.target.files?.[0];if(file){setProductImageFile(file);setProductImagePreview(URL.createObjectURL(file))}}}/></label><small>La imagen se optimiza automáticamente. Puedes dejarla vacía y añadirla después.</small></div>}
         {section === 'Miembros' && editing && <div className="member-modal-actions full"><button type="button" className="secondary-button" onClick={() => openMemberPayment(editing)}><CircleDollarSign size={15}/> Registrar pago</button><button type="button" className="secondary-button" onClick={() => void toggleMemberPause(editing)}>{editing.paused_at ? <Play size={15}/> : <Pause size={15}/>} {editing.paused_at ? 'Reactivar actividad' : 'Pausar actividad'}</button></div>}
         {moduleConfig.fields.map(field => <FieldInput key={field.key} field={moduleConfig.table === 'products' && editing && field.key === 'stock' ? { ...field, disabled: true } : field} value={form[field.key] || ''} onChange={value => setForm(v => ({ ...v, [field.key]: value }))} />)}
         <div className="form-actions"><button type="button" className="secondary-button" onClick={() => setDialog(null)}>Cancelar</button><button disabled={busy} className="primary-button"><Check size={16}/>{busy ? 'Guardando…' : 'Guardar registro'}</button></div>
@@ -560,13 +584,13 @@ export default function App() {
         <p className="form-hint full">Las tarifas Diario, Quincenal, Mensual y los tickets de 5, 10 y 15 días están precargados. El saldo pendiente no se suma a la caja. La vigencia se extiende cuando el pago queda completo. En transferencias y Nequi, registra el dinero recibido solo después de confirmar el abono en la cuenta; una captura no es confirmación.</p>
         <FormActions busy={busy} onCancel={() => setDialog(null)}/>
       </form>}
-      {dialog === 'daypass' && <form className="form-grid" onSubmit={submitDayPass}>
-        <FieldInput field={{ key: 'visitor_name', label: 'Nombre del visitante', required: true }} value={form.visitor_name || ''} onChange={v => setForm(f => ({ ...f, visitor_name: v }))}/>
-        <FieldInput field={{ key: 'amount', label: 'Tarifa (COP)', type: 'number', required: true }} value={form.amount || ''} onChange={v => setForm(f => ({ ...f, amount: v }))}/>
-        <FieldInput field={{ key: 'method', label: 'Método de pago', type: 'select', options: methods }} value={form.method || 'cash'} onChange={v => setForm(f => ({ ...f, method: v }))}/>
-        <FieldInput field={{ key: 'notes', label: 'Observaciones' }} value={form.notes || ''} onChange={v => setForm(f => ({ ...f, notes: v }))}/>
-        <p className="form-hint full">Se registra como pase diario y asistencia, sin crear un socio permanente. En transferencias y Nequi, confirma el abono real antes de marcar el pago como recibido.</p>
-        <FormActions busy={busy} onCancel={() => setDialog(null)}/>
+      {dialog === 'daypass' && <form className="entry-cash-form" onSubmit={submitDayPass}>
+        <div className="entry-cash-hero"><span className="entry-cash-icon"><Zap size={23}/></span><div><small>COBRO RÁPIDO · SIN REGISTRAR CLIENTE</small><h3>Entrada general</h3><p>Registra el ingreso y el pago sin pedir nombre, cédula ni crear una ficha.</p></div></div>
+        <div className="entry-price-card"><span>Tarifa de entrada diaria</span><strong>$ 4.000</strong></div>
+        <FieldInput field={{key:'amount',label:'Valor recibido (COP)',type:'number',required:true}} value={form.amount||'4000'} onChange={v=>setForm(f=>({...f,amount:v}))}/>
+        <FieldInput field={{key:'method',label:'Medio de pago',type:'select',options:methods}} value={form.method||'cash'} onChange={v=>setForm(f=>({...f,method:v}))}/>
+        <p className="form-hint">Se guardará como “Entrada general”. Para Nequi o transferencia, confirma el pago antes de marcarlo recibido.</p>
+        <FormActions busy={busy} onCancel={()=>setDialog(null)}/>
       </form>}
       {dialog === 'expense' && <form className="form-grid" onSubmit={submitExpense}>
         <FieldInput field={{ key: 'category', label: 'Categoría', required: true, options: undefined }} value={form.category || ''} onChange={v => setForm(f => ({ ...f, category: v }))}/>
@@ -576,15 +600,25 @@ export default function App() {
         <FieldInput field={{ key: 'notes', label: 'Observaciones' }} value={form.notes || ''} onChange={v => setForm(f => ({ ...f, notes: v }))}/>
         <FormActions busy={busy} onCancel={() => setDialog(null)}/>
       </form>}
-      {dialog === 'sale' && <form className="form-grid" onSubmit={submitSale}>
-        <FieldInput field={{ key: 'member_id', label: 'Comprador (opcional)', type: 'select', options: [{ value: '', label: 'Venta sin identificar' }, ...memberOptions] }} value={form.member_id || ''} onChange={v => setForm(f => ({ ...f, member_id: v }))}/>
-        <ProductAdder options={productOptions} onAdd={(id, qty) => setSaleLines(old => { const found = old.find(x => x.product_id === id); return found ? old.map(x => x.product_id === id ? { ...x, quantity: x.quantity + qty } : x) : [...old, { product_id: id, quantity: qty }] })}/>
-        <LineList lines={saleLines} products={rows.products || []} onChange={setSaleLines}/>
-        <div className="cart-total"><span>Total de venta</span><strong>{formatMoney(saleLines.reduce((sum,l) => sum + Number(rows.products?.find(p => p.id === l.product_id)?.price || 0) * l.quantity, 0))}</strong></div>
-        <FieldInput field={{ key: 'amount_paid', label: 'Dinero recibido (COP)', type: 'number' }} value={form.amount_paid || ''} onChange={v => setForm(f => ({ ...f, amount_paid: v }))}/>
-        <FieldInput field={{ key: 'method', label: 'Método de pago', type: 'select', options: methods }} value={form.method || 'cash'} onChange={v => setForm(f => ({ ...f, method: v }))}/>
-        <p className="form-hint full">Deja el dinero recibido vacío para registrar la venta como pagada en su totalidad. El inventario baja al confirmar.</p>
-        <FormActions busy={busy} onCancel={() => setDialog(null)} />
+      {dialog === 'sale' && <form className="pos-screen" onSubmit={submitSale}>
+        <div className="pos-main">
+          <div className="pos-section-head"><div><span className="pos-step">01</span><div><strong>Catálogo de productos</strong><small>Selecciona una tarjeta para añadirla al carrito</small></div></div><span className="pos-count">{(rows.products||[]).filter(p=>p.active!==false).length} productos</span></div>
+          <POSCatalog products={(rows.products||[]).filter(p=>p.active!==false)} onAdd={id=>setSaleLines(old=>{const p=rows.products?.find(x=>x.id===id);if(!p)return old;const found=old.find(x=>x.product_id===id);const next=(found?.quantity||0)+1;if(next>Number(p.stock||0)){notify('No hay más existencias disponibles de '+p.name);return old}return found?old.map(x=>x.product_id===id?{...x,quantity:next}:x):[...old,{product_id:id,quantity:1}]})}/>
+          <div className="pos-section-head cart-head"><div><span className="pos-step">02</span><div><strong>Carrito</strong><small>{saleLines.reduce((n,l)=>n+l.quantity,0)} unidad(es) seleccionadas</small></div></div></div>
+          <LineList lines={saleLines} products={rows.products||[]} onChange={setSaleLines}/>
+        </div>
+        <aside className="pos-receipt">
+          <div className="receipt-heading"><ShoppingCart size={18}/><strong>Caja de venta</strong><span>VENTA RÁPIDA</span></div>
+          <div className="receipt-stat"><span>Referencias</span><b>{saleLines.length}</b></div>
+          <div className="receipt-stat"><span>Unidades</span><b>{saleLines.reduce((n,l)=>n+l.quantity,0)}</b></div>
+          <div className="receipt-grand"><small>Total a cobrar</small><strong>{formatMoney(saleLines.reduce((sum,l)=>sum+Number(rows.products?.find(p=>p.id===l.product_id)?.price||0)*l.quantity,0))}</strong></div>
+          <FieldInput field={{key:'amount_paid',label:'Dinero recibido',type:'number',placeholder:'Vacío = pago completo'}} value={form.amount_paid||''} onChange={v=>setForm(f=>({...f,amount_paid:v}))}/>
+          <FieldInput field={{key:'method',label:'Medio de pago',type:'select',options:methods}} value={form.method||'cash'} onChange={v=>setForm(f=>({...f,method:v}))}/>
+          <div className="receipt-due"><span>Saldo pendiente</span><b>{formatMoney(Math.max(0,saleLines.reduce((sum,l)=>sum+Number(rows.products?.find(p=>p.id===l.product_id)?.price||0)*l.quantity,0)-Number(form.amount_paid||0)))}</b></div>
+          <p className="receipt-hint">No necesitas identificar al comprador. Solo marca la venta. El efectivo recibido entra a caja y el inventario se actualiza.</p>
+          <button className="pos-confirm" disabled={busy||!saleLines.length}><Check size={17}/>{busy?'Registrando…':'Marcar venta'}</button>
+          <button type="button" className="pos-cancel" onClick={()=>{setSaleLines([]);setForm({method:'cash'});setDialog(null)}}>Cancelar</button>
+        </aside>
       </form>}
       {dialog === 'purchase' && <form className="form-grid" onSubmit={submitPurchase}>
         <FieldInput field={{ key: 'supplier', label: 'Proveedor' }} value={form.supplier || ''} onChange={v => setForm(f => ({ ...f, supplier: v }))}/>
@@ -750,7 +784,24 @@ function Empty({text}:{text:string}){return <div className="empty-state"><Clipbo
 function Modal({title,children,onClose}:{title:string;children:ReactNode;onClose:()=>void}){return <div className="modal-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)onClose()}}><section className="modal"><div className="modal-heading"><h2>{title}</h2><button onClick={onClose}><X size={18}/></button></div>{children}</section></div>}
 function FieldInput({field,value,onChange}:{field:Field;value:string;onChange:(v:string)=>void}){return <label className={field.type==='textarea'?'field full':'field'}>{field.label}{field.type==='select'?<select disabled={field.disabled} value={value} onChange={e=>onChange(e.target.value)} required={field.required}><option value="">Seleccionar…</option>{field.options?.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}</select>:field.type==='textarea'?<textarea disabled={field.disabled} value={value} onChange={e=>onChange(e.target.value)} placeholder={field.placeholder} required={field.required}/>:<input disabled={field.disabled} type={field.type||'text'} value={value} onChange={e=>onChange(e.target.value)} placeholder={field.placeholder} required={field.required} min={field.type==='number'?0:undefined}/>}</label>}
 function FormActions({busy,onCancel}:{busy:boolean;onCancel:()=>void}){return <div className="form-actions"><button type="button" className="secondary-button" onClick={onCancel}>Cancelar</button><button disabled={busy} className="primary-button"><Check size={16}/>{busy?'Procesando…':'Confirmar registro'}</button></div>}
-function ProductAdder({options,onAdd}:{options:{value:string;label:string}[];onAdd:(id:string,qty:number)=>void}){const [id,setId]=useState('');const [qty,setQty]=useState('1');return <div className="product-adder"><select value={id} onChange={e=>setId(e.target.value)}><option value="">Selecciona producto…</option>{options.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}</select><input aria-label="Cantidad" type="number" min="1" value={qty} onChange={e=>setQty(e.target.value)}/><button type="button" className="secondary-button" disabled={!id||Number(qty)<1} onClick={()=>{onAdd(id,Number(qty));setId('');setQty('1')}}><Plus size={15}/> Agregar</button></div>}
-function LineList({lines,products,onChange}:{lines:{product_id:string;quantity:number}[];products:Row[];onChange:(v:{product_id:string;quantity:number}[])=>void}){return <div className="cart-lines">{lines.map(line=>{const p=products.find(x=>x.id===line.product_id);return <div key={line.product_id}><span>{p?.name} × {line.quantity}</span><strong>{formatMoney(Number(p?.price||0)*line.quantity)}</strong><button type="button" onClick={()=>onChange(lines.filter(x=>x.product_id!==line.product_id))}><X size={14}/></button></div>})}{!lines.length&&<small>Aún no hay productos agregados.</small>}</div>}
+async function compressProductImage(file:File):Promise<Blob>{
+ const bitmap=await createImageBitmap(file);const scale=Math.min(1,720/Math.max(bitmap.width,bitmap.height));const canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round(bitmap.width*scale));canvas.height=Math.max(1,Math.round(bitmap.height*scale));const context=canvas.getContext('2d');if(!context)throw new Error('No fue posible procesar la imagen');context.drawImage(bitmap,0,0,canvas.width,canvas.height);bitmap.close();const blob=await new Promise<Blob>((resolve,reject)=>canvas.toBlob(value=>value?resolve(value):reject(new Error('No se pudo convertir la imagen')),'image/webp',0.78));return blob
+}
+async function blobToDataUrl(blob:Blob):Promise<string>{return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result));reader.onerror=()=>reject(new Error('No se pudo leer la imagen'));reader.readAsDataURL(blob)})}
+function POSCatalog({products,onAdd}:{products:Row[];onAdd:(id:string)=>void}) {
+ const [category,setCategory]=useState('Todas');const [query,setQuery]=useState('')
+ const categories=['Todas',...Array.from(new Set(products.map(p=>String(p.category||'Otros')))).sort()]
+ const shown=products.filter(p=>(category==='Todas'||String(p.category||'Otros')===category)&&String(p.name||'').toLowerCase().includes(query.toLowerCase()))
+ return <div className="pos-catalog"><div className="pos-catalog-toolbar"><div className="pos-categories">{categories.map(cat=><button type="button" className={category===cat?'selected':''} key={cat} onClick={()=>setCategory(cat)}>{cat}</button>)}</div><label className="pos-catalog-search"><Search size={15}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar producto…"/></label></div><div className="pos-product-grid">{shown.map(p=><button type="button" key={p.id} className="pos-product-card" disabled={Number(p.stock||0)<=0} onClick={()=>onAdd(p.id)}><div className="pos-product-art">{p.image_url?<img src={p.image_url} alt={p.name}/>:<div className="pos-product-placeholder"><Package size={28}/><small>{p.category||'Producto'}</small></div>}<span className="pos-add-icon"><Plus size={16}/></span></div><div className="pos-product-meta"><small>{p.category||'Otros'}</small><strong>{p.name}</strong><div><b>{formatMoney(p.price)}</b><span>{Number(p.stock||0)<=0?'Agotado':String(p.stock)+' disp.'}</span></div></div></button>)}</div>{!shown.length&&<Empty text="No hay productos en esta categoría o búsqueda."/>}</div>
+}
+function ProductCatalog({products,onCreate,onEdit}:{products:Row[];onCreate:()=>void;onEdit:(p:Row)=>void}) {
+ const [category,setCategory]=useState('Todas');const [query,setQuery]=useState('')
+ const categories=['Todas',...Array.from(new Set(products.map(p=>String(p.category||'Otros')))).sort()]
+ const shown=products.filter(p=>(category==='Todas'||String(p.category||'Otros')===category)&&JSON.stringify(p).toLowerCase().includes(query.toLowerCase()))
+ return <><div className="module-heading product-heading"><div><div className="eyebrow">INVENTARIO VISUAL</div><h1>Catálogo de productos</h1><p>Organiza por categorías, imágenes, precios y existencias.</p></div><button className="primary-button" onClick={onCreate}><Plus size={16}/> Añadir producto</button></div><div className="product-shelf-toolbar"><div className="pos-categories">{categories.map(cat=><button type="button" className={category===cat?'selected':''} key={cat} onClick={()=>setCategory(cat)}>{cat}</button>)}</div><label className="pos-catalog-search"><Search size={15}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar producto o código…"/></label></div><div className="product-shelf-grid">{shown.map(p=><button className="shelf-product-card" key={p.id} onClick={()=>onEdit(p)}><div className="shelf-product-image">{p.image_url?<img src={p.image_url} alt={p.name}/>:<div><Package size={30}/><small>Sin imagen</small></div>}<span className="shelf-category">{p.category||'Otros'}</span></div><div className="shelf-product-info"><strong>{p.name}</strong><small>{p.sku||'Sin código'}</small><div><b>{formatMoney(p.price)}</b><span className={Number(p.stock)<=Number(p.min_stock||0)?'low-stock':'stock-ok'}>{p.stock} unidades</span></div></div></button>)}</div>{!shown.length&&<Empty text="No hay productos registrados. Añade el primero para crear el catálogo."/>}</>
+}
+function LineList({lines,products,onChange}:{lines:{product_id:string;quantity:number}[];products:Row[];onChange:(v:{product_id:string;quantity:number}[])=>void}) {
+ return <div className="cart-lines">{lines.map(line=>{const p=products.find(x=>x.id===line.product_id);const stock=Number(p?.stock||0);return <div className="cart-line" key={line.product_id}><div className="cart-product">{p?.image_url?<img src={p.image_url} alt=""/>:<span className="cart-mini-placeholder"><Package size={15}/></span>}<span><strong>{p?.name||'Producto no disponible'}</strong><small>{p?.category||'Otros'} · Disponible: {stock}</small></span></div><div className="cart-quantity"><button type="button" disabled={line.quantity<=1} onClick={()=>onChange(lines.map(x=>x.product_id===line.product_id?{...x,quantity:Math.max(1,x.quantity-1)}:x))}>−</button><b>{line.quantity}</b><button type="button" disabled={line.quantity>=stock} onClick={()=>onChange(lines.map(x=>x.product_id===line.product_id?{...x,quantity:Math.min(stock,x.quantity+1)}:x))}>+</button></div><strong className="cart-line-total">{formatMoney(Number(p?.price||0)*line.quantity)}</strong><button className="cart-remove" type="button" aria-label="Quitar producto" onClick={()=>onChange(lines.filter(x=>x.product_id!==line.product_id))}><X size={14}/></button></div>})}{!lines.length&&<div className="cart-empty"><ShoppingBag size={25}/><strong>El carrito está esperando productos</strong><small>Toca una tarjeta del catálogo para añadirla.</small></div>}</div>
+}
 function PurchaseLineList({lines,products,onChange}:{lines:{product_id:string;quantity:number;unit_cost:number}[];products:Row[];onChange:(v:{product_id:string;quantity:number;unit_cost:number}[])=>void}){return <div className="cart-lines">{lines.map((line,i)=>{const p=products.find(x=>x.id===line.product_id);return <div key={i}><span>{p?.name} × {line.quantity} <small>({formatMoney(line.unit_cost)} c/u)</small></span><strong>{formatMoney(line.unit_cost*line.quantity)}</strong><button type="button" onClick={()=>onChange(lines.filter((_,idx)=>idx!==i))}><X size={14}/></button></div>})}{!lines.length&&<small>Aún no hay productos comprados.</small>}</div>}
 function dialogTitle(dialog: string, editing: Row|null){if(dialog==='record')return editing?'Editar registro':'Nuevo registro';return ({payment:'Registrar pago / mensualidad',balance:'Cobrar saldo pendiente',daypass:'Registrar pase diario',expense:'Registrar gasto',sale:'Nueva venta',purchase:'Registrar compra',cash:'Control de caja'} as Record<string,string>)[dialog]||'Movimiento'}

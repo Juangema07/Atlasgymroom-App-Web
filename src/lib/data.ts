@@ -159,3 +159,11 @@ export async function importLocalBackup(raw: string) {
     if (Array.isArray(rows)) await entityStore(table).bulkPut(rows)
   }
 }
+
+/** Borra datos operativos locales para comenzar una prueba limpia. Conserva perfiles y tarifas configuradas. */
+export async function resetLocalTestData(): Promise<void> {
+  const keep = new Set<EntityTable>(['profiles','plans'])
+  const tables = ENTITY_TABLES.filter(name => !keep.has(name))
+  await Promise.all(tables.map(name => entityStore(name).clear()))
+  await localDb.outbox.clear()
+}
