@@ -371,7 +371,7 @@ export default function App() {
         <FieldInput field={{ key: 'amount_paid', label: 'Dinero recibido (COP)', type: 'number', required: true }} value={form.amount_paid ?? form.amount ?? ''} onChange={v => setForm(f => ({ ...f, amount_paid: v }))}/>
         <FieldInput field={{ key: 'method', label: 'Método de pago', type: 'select', options: methods }} value={form.method || 'cash'} onChange={v => setForm(f => ({ ...f, method: v }))}/>
         <FieldInput field={{ key: 'notes', label: 'Observaciones' }} value={form.notes || ''} onChange={v => setForm(f => ({ ...f, notes: v }))}/>
-        <p className="form-hint full">El saldo pendiente no se suma a la caja. La vigencia se extiende cuando el pago queda completo.</p>
+        <p className="form-hint full">El saldo pendiente no se suma a la caja. La vigencia se extiende cuando el pago queda completo. En transferencias y Nequi, registra el dinero recibido solo después de confirmar el abono en la cuenta; una captura no es confirmación.</p>
         <FormActions busy={busy} onCancel={() => setDialog(null)}/>
       </form>}
       {dialog === 'daypass' && <form className="form-grid" onSubmit={submitDayPass}>
@@ -379,7 +379,7 @@ export default function App() {
         <FieldInput field={{ key: 'amount', label: 'Tarifa (COP)', type: 'number', required: true }} value={form.amount || ''} onChange={v => setForm(f => ({ ...f, amount: v }))}/>
         <FieldInput field={{ key: 'method', label: 'Método de pago', type: 'select', options: methods }} value={form.method || 'cash'} onChange={v => setForm(f => ({ ...f, method: v }))}/>
         <FieldInput field={{ key: 'notes', label: 'Observaciones' }} value={form.notes || ''} onChange={v => setForm(f => ({ ...f, notes: v }))}/>
-        <p className="form-hint full">Se registra como pase diario y asistencia, sin crear un socio permanente.</p>
+        <p className="form-hint full">Se registra como pase diario y asistencia, sin crear un socio permanente. En transferencias y Nequi, confirma el abono real antes de marcar el pago como recibido.</p>
         <FormActions busy={busy} onCancel={() => setDialog(null)}/>
       </form>}
       {dialog === 'expense' && <form className="form-grid" onSubmit={submitExpense}>

@@ -412,6 +412,9 @@ begin
     insert into public.stock_movements(id,product_id,movement_type,quantity,reference_id,created_by)
     values(coalesce(nullif(item->>'stock_movement_id','')::uuid,gen_random_uuid()),pid,'purchase',qty,purid,auth.uid());
   end loop;
+  if coalesce((p_purchase->>'amount_paid')::numeric,0) < 0 or coalesce((p_purchase->>'amount_paid')::numeric,0) > coalesce((p_purchase->>'total_amount')::numeric,0) then
+    raise exception 'Valor pagado de compra inválido';
+  end if;
   if coalesce((p_purchase->>'amount_paid')::numeric,0)>0 then
     insert into public.cash_movements(id,cash_session_id,direction,amount,method,description,reference_id,created_by)
     values(coalesce(nullif(p_purchase->>'cash_movement_id','')::uuid,gen_random_uuid()),(select id from public.cash_sessions where status='open' limit 1),'expense',
@@ -435,12 +438,15 @@ end $$;
 
 create or replace function public.close_cash_session(p_session_id uuid, p_counted_cash numeric)
 returns jsonb language plpgsql security definer set search_path = public
-as $$
+as $
 declare sess public.cash_sessions%rowtype; expected numeric; diff numeric;
 begin
   if not public.is_staff() then raise exception 'No autorizado'; end if;
   select * into sess from public.cash_sessions where id=p_session_id for update;
-  if not found or sess.status <> 'open' then raise exception 'La caja no está abierta'; end if;
+  if not found then raise exception 'No se encontró la sesión de caja'; end if;
+  if sess.status = 'closed' then
+    return jsonb_build_object('expected_cash',sess.expected_cash,'counted_cash',sess.counted_cash,'difference',sess.difference);
+  end if;
   if not (public.is_owner() or sess.opened_by=auth.uid()) then raise exception 'Solo quien abrió la caja o el dueño puede cerrarla'; end if;
   select sess.initial_cash + coalesce(sum(case when direction='income' then amount else -amount end),0)
     into expected from public.cash_movements
@@ -512,7 +518,7 @@ create policy staff_update_members on public.members for update to authenticated
 drop policy if exists owner_update_plans on public.plans;
 create policy owner_update_plans on public.plans for update to authenticated using (public.is_owner()) with check (public.is_owner());
 drop policy if exists owner_update_cash_sessions on public.cash_sessions;
-create policy owner_update_cash_sessions on public.cash_sessions for update to authenticated using (public.is_owner() or opened_by=auth.uid()) with check (public.is_owner() or opened_by=auth.uid());
+revoke update on public.cash_sessions from authenticated;
 drop policy if exists owner_read_audit on public.audit_logs;
 create policy owner_read_audit on public.audit_logs for select to authenticated using (public.is_owner());
 
@@ -522,6 +528,15 @@ grant select, insert, update on public.profiles, public.plans, public.members, p
   public.attendance, public.day_passes, public.products, public.sales, public.sale_items,
   public.stock_movements, public.purchases, public.purchase_items, public.expenses,
   public.cash_sessions, public.cash_movements, public.audit_logs to authenticated;
+revoke all on function public.create_product(jsonb) from public;
+revoke all on function public.record_membership_payment(jsonb) from public;
+revoke all on function public.complete_sale(jsonb,jsonb) from public;
+revoke all on function public.register_day_pass(jsonb) from public;
+revoke all on function public.record_expense(jsonb) from public;
+revoke all on function public.receive_purchase(jsonb,jsonb) from public;
+revoke all on function public.open_cash_session(jsonb) from public;
+revoke all on function public.close_cash_session(uuid,numeric) from public;
+
 grant execute on function public.current_app_role() to authenticated;
 grant execute on function public.is_staff() to authenticated;
 grant execute on function public.is_owner() to authenticated;

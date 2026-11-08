@@ -51,6 +51,11 @@ Desde Configuración se puede exportar un archivo JSON de respaldo del almacenam
 
 ## 5. Reglas de operación
 
+- Las escrituras de pagos, ventas, pases diarios, compras, gastos, caja y movimientos de stock quedan restringidas a funciones transaccionales de la base de datos; el cliente no recibe permisos de inserción directa para esos libros.
+- La creación de productos y su stock inicial se realiza mediante una función exclusiva del propietario. El stock posterior cambia mediante venta o compra.
+- El cierre de caja es idempotente: repetir la solicitud no vuelve a cerrar ni altera el resultado registrado.
+
+
 - Los pagos, ventas, pases diarios, gastos y compras usan funciones SQL transaccionales cuando hay conexión.
 - Cada movimiento utiliza UUID estable para que una repetición tras pérdida de conexión no lo duplique.
 - No hay botones para borrar movimientos financieros; las anulaciones/correcciones deben conservar el original y añadirse como movimientos compensatorios en una siguiente iteración.
