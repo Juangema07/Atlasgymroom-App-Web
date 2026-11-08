@@ -57,5 +57,6 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true
     }
-  }
+  },
+  "main": "electron/main.cjs"
 }
