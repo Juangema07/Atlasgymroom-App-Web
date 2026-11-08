@@ -307,7 +307,7 @@ export default function App() {
     }
     if (section === 'Miembros') {
       row.status ||= 'active'; row.current_plan_id ||= null
-      const document = String(row.document || '').trim().replace(/\\s+/g, '')
+      const document = String(row.document || '').trim().replace(/\s+/g, '')
       if (!document) { notify('La cédula es obligatoria para registrar un cliente.'); return }
       if (members.some(m => String(m.document || '').replace(/\\s+/g, '') === document && m.id !== row.id)) { notify('Ya existe un cliente registrado con esa cédula.'); return }
       row.document = document
@@ -349,7 +349,7 @@ export default function App() {
     if (member && plan && amount_paid >= amount && amount > 0) {
       const beginDate = member.end_date && member.end_date >= today() && member.status === 'active' && !member.paused_at ? datePlusDays(member.end_date, 1) : today()
       const endDate = datePlusDays(beginDate, Number(plan.duration_days) - 1)
-      optimistic.push({ table: 'members' as const, row: { ...member, current_plan_id: plan.id, start_date: beginDate, end_date: endDate, status: 'active', updated_at: nowIso() } })
+      optimistic.push({ table: 'members' as const, row: { ...member, current_plan_id: plan.id, start_date: beginDate, end_date: endDate, status: 'active', paused_at: null, updated_at: nowIso() } })
     }
     setBusy(true)
     const result = await runBusinessRpc('record_membership_payment', { p_payment: { ...payment, cash_movement_id: cashMovementId } }, optimistic)
