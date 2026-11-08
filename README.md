@@ -35,7 +35,7 @@ Para modo local sin backend, deja vacías las variables de Supabase. Se mostrar�
    where id = (select id from auth.users where email = 'CORREO_DEL_DUENO');
    ```
 5. Copiar Project URL y Publishable key desde el panel **Connect**.
-6. Guardarlas como `VITE_SUPABASE_URL` y `VITE_SUPABASE_PUBLISHABLE_KEY` en `.env.local` para desarrollo y como variables de entorno del alojamiento para producción.
+6. Guardarlas como `VITE_SUPABASE_URL` y `VITE_SUPABASE_PUBLISHABLE_KEY` en `.env.local` para desarrollo. Para GitHub Pages, créalas también en **Settings → Secrets and variables → Actions → Variables** con esos mismos nombres. El workflow de publicación las inyecta durante la compilación.
 7. Crear los empleados desde Authentication → Users. El trigger crea su perfil como `cashier`. No compartir cuentas.
 8. Nunca colocar `service_role` ni claves secretas en variables `VITE_*`.
 
