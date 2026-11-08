@@ -468,7 +468,7 @@ end $$;
 -- Registro seguro de asistencia: valida vigencia en el servidor y evita doble entrada diaria.
 create or replace function public.register_attendance(p_attendance jsonb)
 returns uuid language plpgsql security definer set search_path = public
-as $
+as $$
 declare aid uuid := (p_attendance->>'id')::uuid; mid uuid := nullif(p_attendance->>'member_id','')::uuid;
   visitor text := nullif(trim(p_attendance->>'visitor_name'),''); local_day date := timezone('America/Bogota',now())::date;
   m public.members%rowtype;
