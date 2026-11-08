@@ -181,7 +181,7 @@ export default function App() {
     if (section === 'Planes') row.active = form.active !== 'false'
     setBusy(true)
     const result = await saveRow(moduleConfig.table, row)
-    if (section === 'Productos' && !editing && Number(row.stock) > 0) await saveRow('stock_movements', { id: makeId(), product_id: row.id, movement_type: 'adjustment', quantity: Number(row.stock), notes: 'Existencia inicial', created_by: session?.user.id || null, created_at: nowIso() })
+    if (section === 'Productos' && !editing && Number(row.stock) > 0 && !result.message?.startsWith('El servidor rechazó')) await saveRow('stock_movements', { id: makeId(), product_id: row.id, movement_type: 'adjustment', quantity: Number(row.stock), notes: 'Existencia inicial', created_by: session?.user.id || null, created_at: nowIso() })
     setBusy(false); setDialog(null); notify(result.message || (result.synced ? 'Registro guardado y sincronizado.' : 'Registro guardado localmente.'))
     await refresh()
   }
@@ -322,6 +322,7 @@ export default function App() {
   if (authLoading) return <div className="auth-screen"><div className="auth-card"><div className="brand-mark"><Dumbbell/></div><p>Comprobando acceso seguro…</p></div></div>
   if (supabaseConfigured && !session) return <Login onSignIn={signIn} busy={busy} toast={toast} />
     const members = rows.members || []
+  const recentPayments = rows.payments || []
   const activeMembers = members.filter(m => m.status === 'active' && (!m.end_date || m.end_date >= today())).length
   const expiredMembers = members.filter(m => m.end_date && m.end_date < today()).length
   const todayPayments = recentPayments.filter(p => String(p.paid_at || p.created_at || '').slice(0,10) === today())
@@ -344,10 +345,10 @@ export default function App() {
       {supabaseConfigured && syncCount > 0 && <div className="sync-warning"><CloudOff size={15}/><span>{syncCount} operación(es) esperando sincronización. No cierres ni borres los datos del navegador hasta recuperar la conexión.</span><button onClick={() => void sync()}>Reintentar</button></div>}
       <div className="page">
         {section === 'Inicio' && <Dashboard activeMembers={activeMembers} expiredMembers={expiredMembers} total={members.length} todayIncome={todayIncome} todayAttendances={(rows.attendance || []).filter(a => String(a.entered_at || '').slice(0,10) === today()).length} expiring={members.filter(m => m.end_date && m.end_date >= today() && m.end_date <= new Date(Date.now()+7*86400000).toISOString().slice(0,10)).length} stockLow={stockLow} rows={rows} onNavigate={handleSection} />}
-        {section === 'Caja' && <CashPage session={activeSession} sessions={rows.cash_sessions || []} movements={rows.cash_movements || []} onOpen={() => openSpecial('cash')} onClose={() => openSpecial('cash')} onOpenSubmit={openCash} onCloseSubmit={closeCash} busy={busy} form={form} setForm={setForm} />}
+        {section === 'Caja' && <CashPage session={activeSession} sessions={rows.cash_sessions || []} movements={rows.cash_movements || []} onOpen={() => openSpecial('cash')} onClose={() => openSpecial('cash')} />}
         {section === 'Informes' && <Reports rows={rows} />}
         {section === 'Configuración' && <SettingsPage onBackup={backup} onRestore={() => fileRef.current?.click()} />}
-        {moduleConfig && <DataModule config={moduleConfig} rows={filteredRows} allRows={rows} search={search} setSearch={setSearch} onCreate={openCreate} onEdit={openRecord} memberName={memberName} productName={productName} planName={planName} />}
+        {moduleConfig && <DataModule config={moduleConfig} rows={filteredRows} search={search} setSearch={setSearch} onCreate={openCreate} onEdit={openRecord} memberName={memberName} productName={productName} planName={planName} />}
         {section === 'Equipo' && !isOwner && <AccessDenied/>}
         {section === 'Auditoría' && !isOwner && <AccessDenied/>}
         <footer>© 2026 Atlasgymroom <span>Gestión clara para entrenar mejor.</span></footer>
@@ -447,7 +448,7 @@ function DataModule({ config, rows, search, setSearch, onCreate, onEdit, memberN
     return value == null || value === '' ? '—' : String(value)
   }
   const canEdit = config.table === 'members' || config.table === 'plans' || config.table === 'products'
-  return <><div className="module-heading"><div><div className="eyebrow">GESTIÓN</div><h1>{config.title}</h1><p>{config.description}</p></div>{config.fields.length > 0 && <button className="primary-button" onClick={onCreate}><Plus size={16}/> Nuevo registro</button>}{config.table === 'payments' && <button className="primary-button" onClick={onCreate}><Plus size={16}/> Registrar pago</button>}{config.table === 'sales' && <button className="primary-button" onClick={onCreate}><Plus size={16}/> Nueva venta</button>}{config.table === 'purchases' && <button className="primary-button" onClick={onCreate}><Plus size={16}/> Registrar compra</button>}{config.table === 'expenses' && <button className="primary-button" onClick={onCreate}><Plus size={16}/> Registrar gasto</button>}</div>
+  return <><div className="module-heading"><div><div className="eyebrow">GESTIÓN</div><h1>{config.title}</h1><p>{config.description}</p></div>{config.fields.length > 0 && <button className="primary-button" onClick={onCreate}><Plus size={16}/> Nuevo registro</button>}{config.table === 'day_passes' && <button className="primary-button" onClick={onCreate}><Plus size={16}/> Nuevo pase</button>}{config.table === 'payments' && <button className="primary-button" onClick={onCreate}><Plus size={16}/> Registrar pago</button>}{config.table === 'sales' && <button className="primary-button" onClick={onCreate}><Plus size={16}/> Nueva venta</button>}{config.table === 'purchases' && <button className="primary-button" onClick={onCreate}><Plus size={16}/> Registrar compra</button>}{config.table === 'expenses' && <button className="primary-button" onClick={onCreate}><Plus size={16}/> Registrar gasto</button>}</div>
     <section className="panel data-panel"><div className="table-toolbar"><div className="module-count">{rows.length} registro(s)</div><div className="search-box"><Search size={16}/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar…"/></div></div>
       {rows.length ? <div className="table-wrap"><table><thead><tr>{config.columns.map(c=><th key={c.key}>{c.label}</th>)}{canEdit && <th/>}</tr></thead><tbody>{rows.map(row=><tr key={row.id}>{config.columns.map(c=><td key={c.key}>{valueFor(row,c.key)}</td>)}{canEdit && <td className="action-cell"><button className="table-action" onClick={()=>onEdit(row)} title="Editar"><Pencil size={14}/></button></td>}</tr>)}</tbody></table></div> : <Empty text={search ? 'No hay resultados para esa búsqueda.' : 'Todavía no hay registros en este módulo.'}/>}
     </section>
