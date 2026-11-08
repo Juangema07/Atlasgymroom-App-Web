@@ -19,7 +19,8 @@ export async function listRows(table: EntityTable): Promise<Row[]> {
     if (!error && data) {
       const store = entityStore(table)
       for (const remote of data as Row[]) {
-        const pending = await localDb.outbox.where('id').equals(remote.id).first()
+        const queued = await localDb.outbox.toArray()
+        const pending = queued.some(item => (item.kind === 'upsert' && item.table === table && item.payload?.id === remote.id) || item.optimistic?.some(ref => ref.table === table && ref.id === remote.id))
         if (!pending) await store.put(remote)
       }
     }
@@ -59,7 +60,7 @@ export async function runBusinessRpc(
   if (!await hasSession()) throw new Error('Inicia sesión para sincronizar los cambios.')
 
   if (!navigator.onLine) {
-    await enqueue({ id: makeId(), kind: 'rpc', payload: { rpc, args }, created_at: stamp })
+    await enqueue({ id: makeId(), kind: 'rpc', payload: { rpc, args }, optimistic: optimistic.map(item => ({ table: item.table, id: item.row.id })), created_at: stamp })
     return { synced: false, message: 'Movimiento guardado localmente. Se enviará al recuperar Internet.' }
   }
 

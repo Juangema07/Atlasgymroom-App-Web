@@ -17,6 +17,7 @@ export type OutboxItem = {
   created_at: string
   attempts: number
   last_error?: string
+  optimistic?: { table: EntityTable; id: string }[]
 }
 
 class AtlasLocalDatabase extends Dexie {

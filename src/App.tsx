@@ -58,6 +58,7 @@ function configFor(section: Section, rows: Record<string, Row[]>): ModuleConfig 
       { key: 'visitor_name', label: 'Nombre del visitante' }, { key: 'entry_type', label: 'Tipo', type: 'select', options: [{ value: 'member', label: 'Socio' }, { value: 'day_pass', label: 'Pase diario' }] },
       { key: 'notes', label: 'Notas' },
     ], columns: [{ key: 'member_id', label: 'Socio' }, { key: 'visitor_name', label: 'Visitante' }, { key: 'entry_type', label: 'Tipo' }, { key: 'entered_at', label: 'Hora' }] },
+    'Pase diario': { table: 'day_passes', title: 'Pases diarios', description: 'Entradas de visitantes sin crear una membresía.', fields: [], columns: [{ key: 'visitor_name', label: 'Visitante' }, { key: 'amount', label: 'Tarifa' }, { key: 'method', label: 'Método' }, { key: 'visited_at', label: 'Fecha' }] },
     Pagos: { table: 'payments', title: 'Pagos y mensualidades', description: 'Historial de cobros, abonos y saldos pendientes.', fields: [], columns: [{ key: 'member_id', label: 'Socio' }, { key: 'amount', label: 'Valor' }, { key: 'amount_paid', label: 'Recibido' }, { key: 'status', label: 'Estado' }, { key: 'paid_at', label: 'Fecha' }] },
     Productos: { table: 'products', title: 'Productos e inventario', description: 'Catálogo, precios, costos y existencias.', fields: [
       { key: 'name', label: 'Nombre', required: true }, { key: 'sku', label: 'Código / SKU' }, { key: 'description', label: 'Descripción' },
@@ -81,7 +82,7 @@ export default function App() {
   const [profile, setProfile] = useState<Row | null>(null)
   const [rows, setRows] = useState<Record<string, Row[]>>({})
   const [search, setSearch] = useState('')
-  const [dialog, setDialog] = useState<'record' | 'payment' | 'daypass' | 'expense' | 'sale' | 'purchase' | null>(null)
+  const [dialog, setDialog] = useState<'record' | 'payment' | 'daypass' | 'expense' | 'sale' | 'purchase' | 'cash' | null>(null)
   const [editing, setEditing] = useState<Row | null>(null)
   const [form, setForm] = useState<Record<string, string>>({})
   const [busy, setBusy] = useState(false)
@@ -188,11 +189,13 @@ export default function App() {
   async function submitPayment(event: FormEvent) {
     event.preventDefault()
     const id = makeId()
-    const amount = Number(form.amount || 0), amount_paid = Number(form.amount_paid || 0)
+    const amount = Number(form.amount || 0), amount_paid = Number(form.amount_paid === undefined || form.amount_paid === '' ? form.amount || 0 : form.amount_paid)
     const payment: Row = { id, member_id: form.member_id, plan_id: form.plan_id || null, amount, amount_paid, method: form.method || 'cash', status: amount_paid === 0 ? 'pending' : amount_paid < amount ? 'partial' : 'paid', paid_at: amount_paid > 0 ? nowIso() : null, notes: form.notes || null, created_by: session?.user.id || null, created_at: nowIso() }
     const member = rows.members?.find(m => m.id === form.member_id)
     const plan = rows.plans?.find(p => p.id === form.plan_id)
-    const optimistic = [{ table: 'payments' as const, row: payment }]
+    const optimistic: { table: EntityTable; row: Row }[] = [{ table: 'payments', row: payment }]
+    const cashMovementId = makeId()
+    if (amount_paid > 0) optimistic.push({ table: 'cash_movements', row: { id: cashMovementId, cash_session_id: activeSession?.id || null, direction: 'income', amount: amount_paid, method: form.method || 'cash', description: 'Pago de mensualidad', reference_id: id, created_by: session?.user.id || null, created_at: nowIso() } })
     if (member && plan && amount_paid >= amount && amount > 0) {
       const begin = member.end_date && member.end_date >= today() ? new Date(member.end_date + 'T00:00:00') : new Date()
       begin.setDate(begin.getDate() + (member.end_date && member.end_date >= today() ? 1 : 0))
@@ -200,7 +203,7 @@ export default function App() {
       optimistic.push({ table: 'members' as const, row: { ...member, current_plan_id: plan.id, start_date: begin.toISOString().slice(0,10), end_date: end.toISOString().slice(0,10), status: 'active', updated_at: nowIso() } })
     }
     setBusy(true)
-    const result = await runBusinessRpc('record_membership_payment', { p_payment: payment }, optimistic)
+    const result = await runBusinessRpc('record_membership_payment', { p_payment: { ...payment, cash_movement_id: cashMovementId } }, optimistic)
     setBusy(false); setDialog(null); notify(result.message || (result.synced ? 'Pago registrado y mensualidad actualizada.' : 'Pago guardado localmente, pendiente de sincronización.'))
     await refresh()
   }
@@ -208,19 +211,23 @@ export default function App() {
   async function submitDayPass(event: FormEvent) {
     event.preventDefault()
     const id = makeId()
-    const pass: Row = { id, visitor_name: form.visitor_name, amount: Number(form.amount || 0), method: form.method || 'cash', notes: form.notes || null, visited_at: nowIso(), created_by: session?.user.id || null, created_at: nowIso() }
-    const attendanceId = makeId()
+    const attendanceId = makeId(), cashMovementId = makeId()
+    const pass: Row = { id, attendance_id: attendanceId, cash_movement_id: cashMovementId, visitor_name: form.visitor_name, amount: Number(form.amount || 0), method: form.method || 'cash', notes: form.notes || null, visited_at: nowIso(), created_by: session?.user.id || null, created_at: nowIso() }
     const attendance: Row = { id: attendanceId, member_id: null, visitor_name: pass.visitor_name, entry_type: 'day_pass', entered_at: nowIso(), created_by: session?.user.id || null, created_at: nowIso() }
     setBusy(true)
-    const result = await runBusinessRpc('register_day_pass', { p_day_pass: pass }, [{ table: 'day_passes', row: pass }, { table: 'attendance', row: attendance }])
+    const optimistic: { table: EntityTable; row: Row }[] = [{ table: 'day_passes', row: pass }, { table: 'attendance', row: attendance }]
+    if (Number(pass.amount) > 0) optimistic.push({ table: 'cash_movements', row: { id: cashMovementId, cash_session_id: activeSession?.id || null, direction: 'income', amount: Number(pass.amount), method: pass.method, description: 'Pase diario', reference_id: id, created_by: session?.user.id || null, created_at: nowIso() } })
+    const result = await runBusinessRpc('register_day_pass', { p_day_pass: pass }, optimistic)
     setBusy(false); setDialog(null); notify(result.message || 'Pase diario registrado.'); await refresh()
   }
 
   async function submitExpense(event: FormEvent) {
     event.preventDefault()
+    const cashMovementId = makeId()
     const expense: Row = { id: makeId(), category: form.category, description: form.description, amount: Number(form.amount || 0), method: form.method || 'cash', expense_date: nowIso(), notes: form.notes || null, created_by: session?.user.id || null, created_at: nowIso() }
     setBusy(true)
-    const result = await runBusinessRpc('record_expense', { p_expense: expense }, [{ table: 'expenses', row: expense }])
+    const optimistic: { table: EntityTable; row: Row }[] = [{ table: 'expenses', row: expense }, { table: 'cash_movements', row: { id: cashMovementId, cash_session_id: activeSession?.id || null, direction: 'expense', amount: Number(expense.amount), method: expense.method, description: expense.description, reference_id: expense.id, created_by: session?.user.id || null, created_at: nowIso() } }]
+    const result = await runBusinessRpc('record_expense', { p_expense: { ...expense, cash_movement_id: cashMovementId } }, optimistic)
     setBusy(false); setDialog(null); notify(result.message || 'Gasto registrado.'); await refresh()
   }
 
@@ -233,9 +240,13 @@ export default function App() {
       return { id: makeId(), product_id: product.id, quantity: line.quantity, unit_price: Number(product.price), line_total: Number(product.price) * line.quantity }
     })
     const total = items.reduce((sum, item) => sum + item.line_total, 0)
+    const insufficient = items.find(item => Number(rows.products?.find(p => p.id === item.product_id)?.stock || 0) < item.quantity)
+    if (insufficient) { notify('No hay existencias suficientes para uno de los productos.'); return }
     const amount_paid = Number(form.amount_paid === '' || form.amount_paid == null ? total : form.amount_paid)
-    const sale: Row = { id, member_id: form.member_id || null, total, amount_paid, method: form.method || 'cash', status: amount_paid === 0 ? 'pending' : amount_paid < total ? 'partial' : 'paid', sold_at: nowIso(), created_by: session?.user.id || null, created_at: nowIso() }
+    const cashMovementId = makeId()
+    const sale: Row = { id, cash_movement_id: cashMovementId, member_id: form.member_id || null, total, amount_paid, method: form.method || 'cash', status: amount_paid === 0 ? 'pending' : amount_paid < total ? 'partial' : 'paid', sold_at: nowIso(), created_by: session?.user.id || null, created_at: nowIso() }
     const optimistic: { table: EntityTable; row: Row }[] = [{ table: 'sales', row: sale }]
+    if (amount_paid > 0) optimistic.push({ table: 'cash_movements', row: { id: cashMovementId, cash_session_id: activeSession?.id || null, direction: 'income', amount: amount_paid, method: form.method || 'cash', description: 'Venta de productos', reference_id: id, created_by: session?.user.id || null, created_at: nowIso() } })
     items.forEach(item => {
       optimistic.push({ table: 'sale_items', row: { ...item, sale_id: id, created_at: nowIso() } })
       const product = rows.products?.find(p => p.id === item.product_id)
@@ -253,8 +264,10 @@ export default function App() {
     const id = makeId()
     const items = purchaseLines.map(line => ({ id: makeId(), product_id: line.product_id, quantity: line.quantity, unit_cost: line.unit_cost }))
     const total_amount = items.reduce((sum, item) => sum + item.quantity * item.unit_cost, 0)
-    const purchase: Row = { id, supplier: form.supplier || null, description: form.description, total_amount, amount_paid: Number(form.amount_paid || 0), method: form.method || 'cash', purchased_at: nowIso(), notes: form.notes || null, created_by: session?.user.id || null, created_at: nowIso() }
+    const cashMovementId = makeId()
+    const purchase: Row = { id, cash_movement_id: cashMovementId, supplier: form.supplier || null, description: form.description, total_amount, amount_paid: Number(form.amount_paid || 0), method: form.method || 'cash', purchased_at: nowIso(), notes: form.notes || null, created_by: session?.user.id || null, created_at: nowIso() }
     const optimistic: { table: EntityTable; row: Row }[] = [{ table: 'purchases', row: purchase }]
+    if (Number(purchase.amount_paid) > 0) optimistic.push({ table: 'cash_movements', row: { id: cashMovementId, cash_session_id: activeSession?.id || null, direction: 'expense', amount: Number(purchase.amount_paid), method: form.method || 'cash', description: 'Compra de inventario', reference_id: id, created_by: session?.user.id || null, created_at: nowIso() } })
     items.forEach(item => {
       optimistic.push({ table: 'purchase_items', row: { ...item, purchase_id: id, created_at: nowIso() } })
       const product = rows.products?.find(p => p.id === item.product_id)
@@ -278,8 +291,10 @@ export default function App() {
     event.preventDefault()
     if (!activeSession) return
     const counted = Number(form.counted_cash || 0)
+    const cashRows = (rows.cash_movements || []).filter(m => m.cash_session_id === activeSession.id && m.method === 'cash')
+    const expected = Number(activeSession.initial_cash || 0) + cashRows.reduce((sum,m) => sum + (m.direction === 'income' ? Number(m.amount) : -Number(m.amount)), 0)
     setBusy(true)
-    const result = await runBusinessRpc('close_cash_session', { p_session_id: activeSession.id, p_counted_cash: counted }, [{ table: 'cash_sessions', row: { ...activeSession, status: 'closed', counted_cash: counted, closed_at: nowIso(), updated_at: nowIso() } }])
+    const result = await runBusinessRpc('close_cash_session', { p_session_id: activeSession.id, p_counted_cash: counted }, [{ table: 'cash_sessions', row: { ...activeSession, status: 'closed', expected_cash: expected, counted_cash: counted, difference: counted - expected, closed_at: nowIso(), updated_at: nowIso() } }])
     setBusy(false); setDialog(null); notify(result.message || 'Solicitud de cierre de caja guardada.'); await refresh()
   }
 
@@ -330,7 +345,7 @@ export default function App() {
       {supabaseConfigured && syncCount > 0 && <div className="sync-warning"><CloudOff size={15}/><span>{syncCount} operación(es) esperando sincronización. No cierres ni borres los datos del navegador hasta recuperar la conexión.</span><button onClick={() => void sync()}>Reintentar</button></div>}
       <div className="page">
         {section === 'Inicio' && <Dashboard activeMembers={activeMembers} expiredMembers={expiredMembers} total={members.length} todayIncome={todayIncome} todayAttendances={(rows.attendance || []).filter(a => String(a.entered_at || '').slice(0,10) === today()).length} expiring={members.filter(m => m.end_date && m.end_date >= today() && m.end_date <= new Date(Date.now()+7*86400000).toISOString().slice(0,10)).length} stockLow={stockLow} rows={rows} onNavigate={handleSection} />}
-        {section === 'Caja' && <CashPage session={activeSession} sessions={rows.cash_sessions || []} movements={rows.cash_movements || []} onOpen={() => openSpecial('record')} onClose={() => openSpecial('record')} onOpenSubmit={openCash} onCloseSubmit={closeCash} busy={busy} form={form} setForm={setForm} />}
+        {section === 'Caja' && <CashPage session={activeSession} sessions={rows.cash_sessions || []} movements={rows.cash_movements || []} onOpen={() => openSpecial('cash')} onClose={() => openSpecial('cash')} onOpenSubmit={openCash} onCloseSubmit={closeCash} busy={busy} form={form} setForm={setForm} />}
         {section === 'Informes' && <Reports rows={rows} />}
         {section === 'Configuración' && <SettingsPage onBackup={backup} onRestore={() => fileRef.current?.click()} />}
         {moduleConfig && <DataModule config={moduleConfig} rows={filteredRows} allRows={rows} search={search} setSearch={setSearch} onCreate={openCreate} onEdit={openRecord} memberName={memberName} productName={productName} planName={planName} />}
@@ -340,7 +355,7 @@ export default function App() {
       </div>
     </main>
 
-    {dialog && <Modal title={dialogTitle(dialog, editing)} onClose={() => setDialog(null)}>
+    {dialog && dialog !== 'cash' && <Modal title={dialogTitle(dialog, editing)} onClose={() => setDialog(null)}>
       {dialog === 'record' && moduleConfig && <form className="form-grid" onSubmit={submitRecord}>
         {moduleConfig.fields.map(field => <FieldInput key={field.key} field={field} value={form[field.key] || ''} onChange={value => setForm(v => ({ ...v, [field.key]: value }))} />)}
         <div className="form-actions"><button type="button" className="secondary-button" onClick={() => setDialog(null)}>Cancelar</button><button disabled={busy} className="primary-button"><Check size={16}/>{busy ? 'Guardando…' : 'Guardar registro'}</button></div>
@@ -392,7 +407,7 @@ export default function App() {
         <FormActions busy={busy} onCancel={() => setDialog(null)}/>
       </form>}
     </Modal>}
-    {section === 'Caja' && dialog === 'record' && <Modal title={activeSession ? 'Cerrar caja' : 'Abrir caja'} onClose={() => setDialog(null)}>
+    {section === 'Caja' && dialog === 'cash' && <Modal title={activeSession ? 'Cerrar caja' : 'Abrir caja'} onClose={() => setDialog(null)}>
       {activeSession ? <form className="form-grid" onSubmit={closeCash}><FieldInput field={{ key: 'counted_cash', label: 'Efectivo contado (COP)', type: 'number', required: true }} value={form.counted_cash || ''} onChange={v => setForm(f => ({ ...f, counted_cash: v }))}/><p className="form-hint full">El sistema comparará el efectivo contado con el saldo esperado a partir de la apertura y movimientos en efectivo.</p><FormActions busy={busy} onCancel={() => setDialog(null)} /></form> :
       <form className="form-grid" onSubmit={openCash}><FieldInput field={{ key: 'initial_cash', label: 'Base inicial (COP)', type: 'number', required: true }} value={form.initial_cash || ''} onChange={v => setForm(f => ({ ...f, initial_cash: v }))}/><FieldInput field={{ key: 'notes', label: 'Notas' }} value={form.notes || ''} onChange={v => setForm(f => ({ ...f, notes: v }))}/><FormActions busy={busy} onCancel={() => setDialog(null)} /></form>}
     </Modal>}
@@ -479,4 +494,4 @@ function FormActions({busy,onCancel}:{busy:boolean;onCancel:()=>void}){return <d
 function ProductAdder({options,onAdd}:{options:{value:string;label:string}[];onAdd:(id:string,qty:number)=>void}){const [id,setId]=useState('');const [qty,setQty]=useState('1');return <div className="product-adder"><select value={id} onChange={e=>setId(e.target.value)}><option value="">Selecciona producto…</option>{options.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}</select><input aria-label="Cantidad" type="number" min="1" value={qty} onChange={e=>setQty(e.target.value)}/><button type="button" className="secondary-button" disabled={!id||Number(qty)<1} onClick={()=>{onAdd(id,Number(qty));setId('');setQty('1')}}><Plus size={15}/> Agregar</button></div>}
 function LineList({lines,products,onChange}:{lines:{product_id:string;quantity:number}[];products:Row[];onChange:(v:{product_id:string;quantity:number}[])=>void}){return <div className="cart-lines">{lines.map(line=>{const p=products.find(x=>x.id===line.product_id);return <div key={line.product_id}><span>{p?.name} × {line.quantity}</span><strong>{formatMoney(Number(p?.price||0)*line.quantity)}</strong><button type="button" onClick={()=>onChange(lines.filter(x=>x.product_id!==line.product_id))}><X size={14}/></button></div>})}{!lines.length&&<small>Aún no hay productos agregados.</small>}</div>}
 function PurchaseLineList({lines,products,onChange}:{lines:{product_id:string;quantity:number;unit_cost:number}[];products:Row[];onChange:(v:{product_id:string;quantity:number;unit_cost:number}[])=>void}){return <div className="cart-lines">{lines.map((line,i)=>{const p=products.find(x=>x.id===line.product_id);return <div key={i}><span>{p?.name} × {line.quantity} <small>({formatMoney(line.unit_cost)} c/u)</small></span><strong>{formatMoney(line.unit_cost*line.quantity)}</strong><button type="button" onClick={()=>onChange(lines.filter((_,idx)=>idx!==i))}><X size={14}/></button></div>})}{!lines.length&&<small>Aún no hay productos comprados.</small>}</div>}
-function dialogTitle(dialog: string, editing: Row|null){if(dialog==='record')return editing?'Editar registro':'Nuevo registro';return ({payment:'Registrar mensualidad',daypass:'Registrar pase diario',expense:'Registrar gasto',sale:'Nueva venta',purchase:'Registrar compra'} as Record<string,string>)[dialog]||'Movimiento'}
+function dialogTitle(dialog: string, editing: Row|null){if(dialog==='record')return editing?'Editar registro':'Nuevo registro';return ({payment:'Registrar mensualidad',daypass:'Registrar pase diario',expense:'Registrar gasto',sale:'Nueva venta',purchase:'Registrar compra',cash:'Control de caja'} as Record<string,string>)[dialog]||'Movimiento'}

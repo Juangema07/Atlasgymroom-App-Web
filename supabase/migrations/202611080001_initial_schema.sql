@@ -283,8 +283,8 @@ begin
     case when paid>0 then coalesce(nullif(p_payment->>'paid_at','')::timestamptz,now()) else null end,
     p_payment->>'notes',auth.uid());
   if paid > 0 then
-    insert into public.cash_movements(cash_session_id,direction,amount,method,description,reference_id,created_by)
-    values((select id from public.cash_sessions where status='open' limit 1),'income',paid,method_name,'Pago de mensualidad',pid,auth.uid());
+    insert into public.cash_movements(id,cash_session_id,direction,amount,method,description,reference_id,created_by)
+    values(coalesce(nullif(p_payment->>'cash_movement_id','')::uuid,gen_random_uuid()),(select id from public.cash_sessions where status='open' limit 1),'income',paid,method_name,'Pago de mensualidad',pid,auth.uid());
   end if;
   if paid >= amt and amt > 0 and plid is not null then
     select duration_days into plan_days from public.plans where id=plid;
@@ -307,6 +307,7 @@ begin
   if not public.is_staff() then raise exception 'No autorizado'; end if;
   if exists(select 1 from public.sales where id=sid) then return sid; end if;
   if jsonb_typeof(p_items) <> 'array' or jsonb_array_length(p_items)=0 then raise exception 'Agrega al menos un producto'; end if;
+  if paid < 0 or paid > coalesce((p_sale->>'total')::numeric,0) then raise exception 'Valor recibido inválido'; end if;
   insert into public.sales(id,member_id,total,amount_paid,method,status,notes,created_by)
   values(sid,member,coalesce((p_sale->>'total')::numeric,0),paid,method_name,
     case when paid=0 then 'pending' when paid < (p_sale->>'total')::numeric then 'partial' else 'paid' end,
@@ -325,8 +326,8 @@ begin
     values(pid,'sale',-qty,sid,auth.uid());
   end loop;
   if paid>0 then
-    insert into public.cash_movements(cash_session_id,direction,amount,method,description,reference_id,created_by)
-    values((select id from public.cash_sessions where status='open' limit 1),'income',paid,method_name,'Venta de productos',sid,auth.uid());
+    insert into public.cash_movements(id,cash_session_id,direction,amount,method,description,reference_id,created_by)
+    values(coalesce(nullif(p_sale->>'cash_movement_id','')::uuid,gen_random_uuid()),(select id from public.cash_sessions where status='open' limit 1),'income',paid,method_name,'Venta de productos',sid,auth.uid());
   end if;
   return sid;
 end $$;
@@ -341,11 +342,11 @@ begin
   if exists(select 1 from public.day_passes where id=did) then return did; end if;
   insert into public.day_passes(id,visitor_name,amount,method,notes,created_by)
   values(did,visitor,amt,method_name,p_day_pass->>'notes',auth.uid());
-  insert into public.attendance(member_id,visitor_name,entry_type,created_by)
-  values(null,visitor,'day_pass',auth.uid());
+  insert into public.attendance(id,member_id,visitor_name,entry_type,created_by)
+  values(coalesce(nullif(p_day_pass->>'attendance_id','')::uuid,gen_random_uuid()),null,visitor,'day_pass',auth.uid());
   if amt>0 then
-    insert into public.cash_movements(cash_session_id,direction,amount,method,description,reference_id,created_by)
-    values((select id from public.cash_sessions where status='open' limit 1),'income',amt,method_name,'Pase diario',did,auth.uid());
+    insert into public.cash_movements(id,cash_session_id,direction,amount,method,description,reference_id,created_by)
+    values(coalesce(nullif(p_day_pass->>'cash_movement_id','')::uuid,gen_random_uuid()),(select id from public.cash_sessions where status='open' limit 1),'income',amt,method_name,'Pase diario',did,auth.uid());
   end if;
   return did;
 end $$;
@@ -361,8 +362,8 @@ begin
   if amt<=0 then raise exception 'El gasto debe ser mayor que cero'; end if;
   insert into public.expenses(id,category,description,amount,method,notes,created_by)
   values(eid,p_expense->>'category',p_expense->>'description',amt,method_name,p_expense->>'notes',auth.uid());
-  insert into public.cash_movements(cash_session_id,direction,amount,method,description,reference_id,created_by)
-  values((select id from public.cash_sessions where status='open' limit 1),'expense',amt,method_name,p_expense->>'description',eid,auth.uid());
+  insert into public.cash_movements(id,cash_session_id,direction,amount,method,description,reference_id,created_by)
+  values(coalesce(nullif(p_expense->>'cash_movement_id','')::uuid,gen_random_uuid()),(select id from public.cash_sessions where status='open' limit 1),'expense',amt,method_name,p_expense->>'description',eid,auth.uid());
   return eid;
 end $$;
 
@@ -387,8 +388,8 @@ begin
     values(pid,'purchase',qty,purid,auth.uid());
   end loop;
   if coalesce((p_purchase->>'amount_paid')::numeric,0)>0 then
-    insert into public.cash_movements(cash_session_id,direction,amount,method,description,reference_id,created_by)
-    values((select id from public.cash_sessions where status='open' limit 1),'expense',
+    insert into public.cash_movements(id,cash_session_id,direction,amount,method,description,reference_id,created_by)
+    values(coalesce(nullif(p_purchase->>'cash_movement_id','')::uuid,gen_random_uuid()),(select id from public.cash_sessions where status='open' limit 1),'expense',
       (p_purchase->>'amount_paid')::numeric,coalesce(p_purchase->>'method','cash'),'Compra de inventario',purid,auth.uid());
   end if;
   return purid;
