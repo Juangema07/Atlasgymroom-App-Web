@@ -290,7 +290,7 @@ export default function App() {
     const id = makeId()
     const row: Row = { id, member_id: member.id, visitor_name: null, entry_type: 'member', entered_at: nowIso(), created_by: session?.user.id || null, created_at: nowIso() }
     setBusy(true)
-    const result = await saveRow('attendance', row)
+    const result = await runBusinessRpc('register_attendance', { p_attendance: row }, [{ table: 'attendance', row }])
     setBusy(false)
     notify(result.message || `Ingreso registrado: ${member.full_name}`)
     setAttendanceLookup('')
@@ -329,7 +329,9 @@ export default function App() {
         ])
       : section === 'Productos' && editing
         ? await updateRow(moduleConfig.table, row)
-        : await saveRow(moduleConfig.table, row)
+        : section === 'Asistencia'
+          ? await runBusinessRpc('register_attendance', { p_attendance: row }, [{ table: 'attendance', row }])
+          : await saveRow(moduleConfig.table, row)
     setBusy(false); setDialog(null); notify(result.message || (result.synced ? 'Registro guardado y sincronizado.' : 'Registro guardado localmente.'))
     await refresh()
   }

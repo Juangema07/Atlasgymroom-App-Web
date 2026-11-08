@@ -461,6 +461,36 @@ begin
   return sid;
 end $$;
 
+-- Registro seguro de asistencia: valida vigencia en el servidor y evita doble entrada diaria.
+create or replace function public.register_attendance(p_attendance jsonb)
+returns uuid language plpgsql security definer set search_path = public
+as $
+declare aid uuid := (p_attendance->>'id')::uuid; mid uuid := nullif(p_attendance->>'member_id','')::uuid;
+  visitor text := nullif(trim(p_attendance->>'visitor_name'),''); local_day date := timezone('America/Bogota',now())::date;
+  m public.members%rowtype;
+begin
+  if not public.is_staff() then raise exception 'No autorizado'; end if;
+  if exists(select 1 from public.attendance where id=aid) then return aid; end if;
+  if mid is not null then
+    perform pg_advisory_xact_lock(hashtextextended(mid::text || ':' || local_day::text,0));
+    select * into m from public.members where id=mid for share;
+    if not found then raise exception 'No se encontró el cliente'; end if;
+    if m.status <> 'active' or m.paused_at is not null or m.current_plan_id is null or m.end_date is null or m.end_date < local_day then
+      raise exception 'El cliente no tiene una tarifa vigente o su actividad está pausada';
+    end if;
+    if exists(select 1 from public.attendance where member_id=mid and (entered_at at time zone 'America/Bogota')::date=local_day) then
+      raise exception 'Este cliente ya tiene una entrada registrada hoy';
+    end if;
+    insert into public.attendance(id,member_id,visitor_name,entry_type,entered_at,notes,created_by)
+    values(aid,mid,null,'member',coalesce(nullif(p_attendance->>'entered_at','')::timestamptz,now()),p_attendance->>'notes',auth.uid());
+  else
+    if visitor is null then raise exception 'Escribe el nombre del visitante'; end if;
+    insert into public.attendance(id,member_id,visitor_name,entry_type,entered_at,notes,created_by)
+    values(aid,null,visitor,'day_pass',coalesce(nullif(p_attendance->>'entered_at','')::timestamptz,now()),p_attendance->>'notes',auth.uid());
+  end if;
+  return aid;
+end $;
+
 create or replace function public.register_day_pass(p_day_pass jsonb)
 returns uuid language plpgsql security definer set search_path = public
 as $$
@@ -669,6 +699,8 @@ revoke update on public.cash_sessions from authenticated;
 drop policy if exists owner_read_audit on public.audit_logs;
 create policy owner_read_audit on public.audit_logs for select to authenticated using (public.is_owner());
 
+revoke insert on public.attendance from authenticated;
+
 -- Sin políticas DELETE deliberadamente: los movimientos contables no se eliminan desde la app.
 grant usage on schema public to authenticated;
 grant select, insert, update on public.profiles, public.plans, public.members, public.payments,
@@ -688,6 +720,7 @@ grant select on public.payments, public.day_passes, public.sales, public.sale_it
 
 revoke all on function public.create_product(jsonb) from public;
 revoke all on function public.record_membership_payment(jsonb) from public;
+revoke all on function public.register_attendance(jsonb) from public;
 revoke all on function public.collect_payment_balance(uuid,numeric,text,uuid) from public;
 revoke all on function public.complete_sale(jsonb,jsonb) from public;
 revoke all on function public.register_day_pass(jsonb) from public;
@@ -701,6 +734,7 @@ grant execute on function public.is_staff() to authenticated;
 grant execute on function public.is_owner() to authenticated;
 grant execute on function public.create_product(jsonb) to authenticated;
 grant execute on function public.record_membership_payment(jsonb) to authenticated;
+grant execute on function public.register_attendance(jsonb) to authenticated;
 grant execute on function public.collect_payment_balance(uuid,numeric,text,uuid) to authenticated;
 grant execute on function public.complete_sale(jsonb,jsonb) to authenticated;
 grant execute on function public.register_day_pass(jsonb) to authenticated;
