@@ -317,7 +317,7 @@ begin
     select case when end_date >= timezone('America/Bogota', now())::date then end_date + 1 else timezone('America/Bogota', now())::date end
       into start_on from public.members where id=mid for update;
     update public.members set current_plan_id=plid, start_date=start_on,
-      end_date=start_on + plan_days, status='active', updated_at=now() where id=mid;
+      end_date=start_on + plan_days - 1, status='active', updated_at=now() where id=mid;
   end if;
   return pid;
 end $$;
@@ -325,24 +325,53 @@ end $$;
 create or replace function public.complete_sale(p_sale jsonb, p_items jsonb)
 returns uuid language plpgsql security definer set search_path = public
 as $$
-declare sid uuid := (p_sale->>'id')::uuid; item jsonb; pid uuid; qty integer; price numeric;
-  stock_now integer; paid numeric := coalesce((p_sale->>'amount_paid')::numeric,0);
-  method_name text := coalesce(p_sale->>'method','cash'); member uuid := nullif(p_sale->>'member_id','')::uuid;
+declare
+  sid uuid := (p_sale->>'id')::uuid;
+  item jsonb;
+  pid uuid;
+  qty integer;
+  price numeric;
+  submitted_price numeric;
+  stock_now integer;
+  actual_total numeric := 0;
+  paid numeric := coalesce((p_sale->>'amount_paid')::numeric,0);
+  method_name text := coalesce(p_sale->>'method','cash');
+  member uuid := nullif(p_sale->>'member_id','')::uuid;
 begin
   if not public.is_staff() then raise exception 'No autorizado'; end if;
   if exists(select 1 from public.sales where id=sid) then return sid; end if;
-  if jsonb_typeof(p_items) <> 'array' or jsonb_array_length(p_items)=0 then raise exception 'Agrega al menos un producto'; end if;
-  if paid < 0 or paid > coalesce((p_sale->>'total')::numeric,0) then raise exception 'Valor recibido inválido'; end if;
-  insert into public.sales(id,member_id,total,amount_paid,method,status,notes,created_by)
-  values(sid,member,coalesce((p_sale->>'total')::numeric,0),paid,method_name,
-    case when paid=0 then 'pending' when paid < (p_sale->>'total')::numeric then 'partial' else 'paid' end,
-    p_sale->>'notes',auth.uid());
+  if jsonb_typeof(p_items) <> 'array' or jsonb_array_length(p_items)=0 then
+    raise exception 'Agrega al menos un producto';
+  end if;
+
+  -- Bloquea productos y verifica los precios vigentes antes de aceptar el total enviado por el navegador.
   for item in select * from jsonb_array_elements(p_items) loop
-    pid := (item->>'product_id')::uuid; qty := (item->>'quantity')::integer;
-    price := (item->>'unit_price')::numeric;
+    pid := (item->>'product_id')::uuid;
+    qty := coalesce((item->>'quantity')::integer,0);
+    submitted_price := coalesce((item->>'unit_price')::numeric,-1);
     if qty <= 0 then raise exception 'Cantidad inválida'; end if;
-    select stock into stock_now from public.products where id=pid for update;
-    if stock_now is null then raise exception 'Producto no encontrado'; end if;
+    select p.stock, p.price into stock_now, price
+      from public.products p where p.id=pid for update;
+    if not found then raise exception 'Producto no encontrado'; end if;
+    if submitted_price <> price then raise exception 'El precio de un producto cambió. Actualiza el carrito'; end if;
+    actual_total := actual_total + (qty * price);
+  end loop;
+
+  if round(coalesce((p_sale->>'total')::numeric,0),2) <> round(actual_total,2) then
+    raise exception 'El total de la venta no coincide con los precios vigentes';
+  end if;
+  if paid < 0 or paid > actual_total then raise exception 'Valor recibido inválido'; end if;
+
+  insert into public.sales(id,member_id,total,amount_paid,method,status,notes,created_by)
+  values(sid,member,actual_total,paid,method_name,
+    case when paid=0 then 'pending' when paid < actual_total then 'partial' else 'paid' end,
+    p_sale->>'notes',auth.uid());
+
+  -- Segunda pasada: aplica stock y detalle dentro de la misma transacción.
+  for item in select * from jsonb_array_elements(p_items) loop
+    pid := (item->>'product_id')::uuid;
+    qty := coalesce((item->>'quantity')::integer,0);
+    select stock, price into stock_now, price from public.products where id=pid for update;
     if stock_now < qty then raise exception 'Existencia insuficiente para uno de los productos'; end if;
     update public.products set stock=stock-qty,updated_at=now() where id=pid;
     insert into public.sale_items(id,sale_id,product_id,quantity,unit_price,line_total)
@@ -350,9 +379,12 @@ begin
     insert into public.stock_movements(id,product_id,movement_type,quantity,reference_id,created_by)
     values(coalesce(nullif(item->>'stock_movement_id','')::uuid,gen_random_uuid()),pid,'sale',-qty,sid,auth.uid());
   end loop;
+
   if paid>0 then
     insert into public.cash_movements(id,cash_session_id,direction,amount,method,description,reference_id,created_by)
-    values(coalesce(nullif(p_sale->>'cash_movement_id','')::uuid,gen_random_uuid()),(select id from public.cash_sessions where status='open' limit 1),'income',paid,method_name,'Venta de productos',sid,auth.uid());
+    values(coalesce(nullif(p_sale->>'cash_movement_id','')::uuid,gen_random_uuid()),
+      (select id from public.cash_sessions where status='open' limit 1),
+      'income',paid,method_name,'Venta de productos',sid,auth.uid());
   end if;
   return sid;
 end $$;
@@ -395,30 +427,58 @@ end $$;
 create or replace function public.receive_purchase(p_purchase jsonb, p_items jsonb)
 returns uuid language plpgsql security definer set search_path = public
 as $$
-declare purid uuid := (p_purchase->>'id')::uuid; item jsonb; pid uuid; qty integer; cost numeric;
+declare
+  purid uuid := (p_purchase->>'id')::uuid;
+  item jsonb;
+  pid uuid;
+  qty integer;
+  cost numeric;
+  calculated_total numeric := 0;
+  paid numeric := coalesce((p_purchase->>'amount_paid')::numeric,0);
 begin
   if not public.is_staff() then raise exception 'No autorizado'; end if;
   if exists(select 1 from public.purchases where id=purid) then return purid; end if;
+  if jsonb_typeof(p_items) <> 'array' or jsonb_array_length(p_items)=0 then
+    raise exception 'Agrega al menos un producto a la compra';
+  end if;
+
+  for item in select * from jsonb_array_elements(p_items) loop
+    pid := (item->>'product_id')::uuid;
+    qty := coalesce((item->>'quantity')::integer,0);
+    cost := coalesce((item->>'unit_cost')::numeric,-1);
+    if qty <= 0 or cost < 0 then raise exception 'Cantidad o costo de compra inválido'; end if;
+    if not exists(select 1 from public.products where id=pid) then
+      raise exception 'Producto de compra no encontrado';
+    end if;
+    calculated_total := calculated_total + (qty * cost);
+  end loop;
+
+  if round(coalesce((p_purchase->>'total_amount')::numeric,0),2) <> round(calculated_total,2) then
+    raise exception 'El total de compra no coincide con el detalle';
+  end if;
+  if paid < 0 or paid > calculated_total then raise exception 'Valor pagado de compra inválido'; end if;
+
   insert into public.purchases(id,supplier,description,total_amount,amount_paid,notes,created_by)
   values(purid,p_purchase->>'supplier',p_purchase->>'description',
-    coalesce((p_purchase->>'total_amount')::numeric,0),coalesce((p_purchase->>'amount_paid')::numeric,0),
-    p_purchase->>'notes',auth.uid());
+    calculated_total,paid,p_purchase->>'notes',auth.uid());
+
   for item in select * from jsonb_array_elements(p_items) loop
-    pid := (item->>'product_id')::uuid; qty := (item->>'quantity')::integer; cost := (item->>'unit_cost')::numeric;
-    if qty<=0 then raise exception 'Cantidad de compra inválida'; end if;
+    pid := (item->>'product_id')::uuid;
+    qty := coalesce((item->>'quantity')::integer,0);
+    cost := (item->>'unit_cost')::numeric;
     update public.products set stock=stock+qty,cost=cost,updated_at=now() where id=pid;
     if not found then raise exception 'Producto de compra no encontrado'; end if;
-    insert into public.purchase_items(id,purchase_id,product_id,quantity,unit_cost) values(coalesce(nullif(item->>'id','')::uuid,gen_random_uuid()),purid,pid,qty,cost);
+    insert into public.purchase_items(id,purchase_id,product_id,quantity,unit_cost)
+    values(coalesce(nullif(item->>'id','')::uuid,gen_random_uuid()),purid,pid,qty,cost);
     insert into public.stock_movements(id,product_id,movement_type,quantity,reference_id,created_by)
     values(coalesce(nullif(item->>'stock_movement_id','')::uuid,gen_random_uuid()),pid,'purchase',qty,purid,auth.uid());
   end loop;
-  if coalesce((p_purchase->>'amount_paid')::numeric,0) < 0 or coalesce((p_purchase->>'amount_paid')::numeric,0) > coalesce((p_purchase->>'total_amount')::numeric,0) then
-    raise exception 'Valor pagado de compra inválido';
-  end if;
-  if coalesce((p_purchase->>'amount_paid')::numeric,0)>0 then
+
+  if paid>0 then
     insert into public.cash_movements(id,cash_session_id,direction,amount,method,description,reference_id,created_by)
-    values(coalesce(nullif(p_purchase->>'cash_movement_id','')::uuid,gen_random_uuid()),(select id from public.cash_sessions where status='open' limit 1),'expense',
-      (p_purchase->>'amount_paid')::numeric,coalesce(p_purchase->>'method','cash'),'Compra de inventario',purid,auth.uid());
+    values(coalesce(nullif(p_purchase->>'cash_movement_id','')::uuid,gen_random_uuid()),
+      (select id from public.cash_sessions where status='open' limit 1),
+      'expense',paid,coalesce(p_purchase->>'method','cash'),'Compra de inventario',purid,auth.uid());
   end if;
   return purid;
 end $$;
@@ -444,10 +504,10 @@ begin
   if not public.is_staff() then raise exception 'No autorizado'; end if;
   select * into sess from public.cash_sessions where id=p_session_id for update;
   if not found then raise exception 'No se encontró la sesión de caja'; end if;
+  if not (public.is_owner() or sess.opened_by=auth.uid()) then raise exception 'Solo quien abrió la caja o el dueño puede cerrarla'; end if;
   if sess.status = 'closed' then
     return jsonb_build_object('expected_cash',sess.expected_cash,'counted_cash',sess.counted_cash,'difference',sess.difference);
   end if;
-  if not (public.is_owner() or sess.opened_by=auth.uid()) then raise exception 'Solo quien abrió la caja o el dueño puede cerrarla'; end if;
   select sess.initial_cash + coalesce(sum(case when direction='income' then amount else -amount end),0)
     into expected from public.cash_movements
     where cash_session_id=p_session_id and method='cash';
@@ -494,8 +554,10 @@ end $$;
 
 -- Escrituras directas limitadas a fichas básicas. Los movimientos económicos y el stock
 -- solo se crean mediante funciones transaccionales SECURITY DEFINER.
+drop policy if exists staff_insert_members on public.members;
 create policy staff_insert_members on public.members for insert to authenticated
 with check (public.is_staff() and created_by = auth.uid());
+drop policy if exists staff_insert_attendance on public.attendance;
 create policy staff_insert_attendance on public.attendance for insert to authenticated
 with check (public.is_staff() and created_by = auth.uid());
 
@@ -528,6 +590,17 @@ grant select, insert, update on public.profiles, public.plans, public.members, p
   public.attendance, public.day_passes, public.products, public.sales, public.sale_items,
   public.stock_movements, public.purchases, public.purchase_items, public.expenses,
   public.cash_sessions, public.cash_movements, public.audit_logs to authenticated;
+revoke insert, update, delete on public.payments, public.day_passes, public.sales,
+  public.sale_items, public.stock_movements, public.purchases, public.purchase_items,
+  public.expenses, public.cash_sessions, public.cash_movements, public.audit_logs
+  from authenticated;
+revoke insert, delete on public.products from authenticated;
+revoke insert, delete on public.profiles from authenticated;
+revoke delete on public.plans, public.members, public.attendance from authenticated;
+grant select on public.payments, public.day_passes, public.sales, public.sale_items,
+  public.stock_movements, public.purchases, public.purchase_items, public.expenses,
+  public.cash_sessions, public.cash_movements, public.audit_logs to authenticated;
+
 revoke all on function public.create_product(jsonb) from public;
 revoke all on function public.record_membership_payment(jsonb) from public;
 revoke all on function public.complete_sale(jsonb,jsonb) from public;

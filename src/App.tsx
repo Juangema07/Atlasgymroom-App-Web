@@ -201,10 +201,9 @@ export default function App() {
     const cashMovementId = makeId()
     if (amount_paid > 0) optimistic.push({ table: 'cash_movements', row: { id: cashMovementId, cash_session_id: activeSession?.id || null, direction: 'income', amount: amount_paid, method: form.method || 'cash', description: 'Pago de mensualidad', reference_id: id, created_by: session?.user.id || null, created_at: nowIso() } })
     if (member && plan && amount_paid >= amount && amount > 0) {
-      const begin = member.end_date && member.end_date >= today() ? new Date(member.end_date + 'T00:00:00') : new Date()
-      begin.setDate(begin.getDate() + (member.end_date && member.end_date >= today() ? 1 : 0))
-      const end = new Date(begin); end.setDate(end.getDate() + Number(plan.duration_days))
-      optimistic.push({ table: 'members' as const, row: { ...member, current_plan_id: plan.id, start_date: begin.toISOString().slice(0,10), end_date: end.toISOString().slice(0,10), status: 'active', updated_at: nowIso() } })
+      const beginDate = member.end_date && member.end_date >= today() ? datePlusDays(member.end_date, 1) : today()
+      const endDate = datePlusDays(beginDate, Number(plan.duration_days) - 1)
+      optimistic.push({ table: 'members' as const, row: { ...member, current_plan_id: plan.id, start_date: beginDate, end_date: endDate, status: 'active', updated_at: nowIso() } })
     }
     setBusy(true)
     const result = await runBusinessRpc('record_membership_payment', { p_payment: { ...payment, cash_movement_id: cashMovementId } }, optimistic)
@@ -329,8 +328,8 @@ export default function App() {
   const recentPayments = rows.payments || []
   const activeMembers = members.filter(m => m.status === 'active' && (!m.end_date || m.end_date >= today())).length
   const expiredMembers = members.filter(m => m.end_date && m.end_date < today()).length
-  const todayPayments = recentPayments.filter(p => String(p.paid_at || p.created_at || '').slice(0,10) === today())
-  const todayIncome = todayPayments.reduce((sum,p) => sum + Number(p.amount_paid || 0), 0) + (rows.sales || []).filter(s => String(s.sold_at || '').slice(0,10) === today()).reduce((sum,s) => sum + Number(s.amount_paid || 0),0) + (rows.day_passes || []).filter(p => String(p.visited_at || '').slice(0,10) === today()).reduce((sum,p) => sum + Number(p.amount || 0),0)
+  const todayPayments = recentPayments.filter(p => dateInBogota(p.paid_at || p.created_at) === today())
+  const todayIncome = todayPayments.reduce((sum,p) => sum + Number(p.amount_paid || 0), 0) + (rows.sales || []).filter(s => dateInBogota(s.sold_at) === today()).reduce((sum,s) => sum + Number(s.amount_paid || 0),0) + (rows.day_passes || []).filter(p => dateInBogota(p.visited_at) === today()).reduce((sum,p) => sum + Number(p.amount || 0),0)
   const stockLow = (rows.products || []).filter(p => Number(p.stock) <= Number(p.min_stock || 0))
   const userLabel = profile?.full_name || session?.user.email || 'Administrador local'
 
@@ -348,7 +347,7 @@ export default function App() {
       {!supabaseConfigured && <div className="local-warning"><AlertTriangle size={16}/><span><strong>Modo local:</strong> la información se guarda solo en este navegador. Configura Supabase y accede con una cuenta antes de registrar datos reales.</span></div>}
       {supabaseConfigured && syncCount > 0 && <div className="sync-warning"><CloudOff size={15}/><span>{syncCount} operación(es) esperando sincronización. No cierres ni borres los datos del navegador hasta recuperar la conexión.</span><button onClick={() => void sync()}>Reintentar</button></div>}
       <div className="page">
-        {section === 'Inicio' && <Dashboard activeMembers={activeMembers} expiredMembers={expiredMembers} total={members.length} todayIncome={todayIncome} todayAttendances={(rows.attendance || []).filter(a => String(a.entered_at || '').slice(0,10) === today()).length} expiring={members.filter(m => m.end_date && m.end_date >= today() && m.end_date <= new Date(Date.now()+7*86400000).toISOString().slice(0,10)).length} stockLow={stockLow} rows={rows} onNavigate={handleSection} />}
+        {section === 'Inicio' && <Dashboard activeMembers={activeMembers} expiredMembers={expiredMembers} total={members.length} todayIncome={todayIncome} todayAttendances={(rows.attendance || []).filter(a => dateInBogota(a.entered_at) === today()).length} expiring={members.filter(m => m.end_date && m.end_date >= today() && m.end_date <= datePlusDays(today(), 7)).length} stockLow={stockLow} rows={rows} onNavigate={handleSection} />}
         {section === 'Caja' && <CashPage session={activeSession} sessions={rows.cash_sessions || []} movements={rows.cash_movements || []} onOpen={() => openSpecial('cash')} onClose={() => openSpecial('cash')} />}
         {section === 'Informes' && <Reports rows={rows} />}
         {section === 'Configuración' && <SettingsPage onBackup={backup} onRestore={() => fileRef.current?.click()} />}
@@ -427,7 +426,7 @@ function Login({ onSignIn, busy, toast }: { onSignIn: (email: string, password: 
 
 function Dashboard(props: { activeMembers: number; expiredMembers: number; total: number; todayIncome: number; todayAttendances: number; expiring: number; stockLow: Row[]; rows: Record<string,Row[]>; onNavigate:(s:Section)=>void }) {
   const recent = [...(props.rows.payments || []), ...(props.rows.sales || []), ...(props.rows.day_passes || [])].sort((a,b) => String(b.created_at || b.sold_at || b.visited_at).localeCompare(String(a.created_at || a.sold_at || a.visited_at))).slice(0,5)
-  return <><div className="welcome-row"><div><div className="eyebrow">{new Date().toLocaleDateString('es-CO',{weekday:'long',day:'numeric',month:'long',year:'numeric'}).toUpperCase()}</div><h1>¡Vamos con toda! <span>💪</span></h1><p className="subheading">Resumen operativo de Atlasgymroom.</p></div><div className="date-button"><CalendarDays size={16}/> Hoy</div></div>
+  return <><div className="welcome-row"><div><div className="eyebrow">{new Date().toLocaleDateString('es-CO',{timeZone:'America/Bogota',weekday:'long',day:'numeric',month:'long',year:'numeric'}).toUpperCase()}</div><h1>¡Vamos con toda! <span>💪</span></h1><p className="subheading">Resumen operativo de Atlasgymroom.</p></div><div className="date-button"><CalendarDays size={16}/> Hoy</div></div>
     <div className="stats-grid"><Stat icon={<Users/>} label="Socios registrados" value={String(props.total)} change={`${props.activeMembers} activos`} tint="green"/><Stat icon={<Activity/>} label="Asistencias de hoy" value={String(props.todayAttendances)} change="Entradas registradas" tint="blue"/><Stat icon={<CircleDollarSign/>} label="Dinero recibido hoy" value={formatMoney(props.todayIncome)} change="Pagos y ventas" tint="yellow"/><Stat icon={<CalendarDays/>} label="Por vencer en 7 días" value={String(props.expiring)} change={`${props.expiredMembers} vencidos`} tint="purple"/></div>
     <div className="content-grid"><section className="panel"><div className="panel-heading"><div><h2>Movimientos recientes</h2><p>Pagos, ventas y pases diarios</p></div><button className="text-button" onClick={() => props.onNavigate('Informes')}>Ver informes <ArrowUpRight size={15}/></button></div>
       {recent.length ? <div className="activity-list">{recent.map((r,i) => <div className="activity-row" key={r.id}><div className={`avatar ${i%2?'blue':'lime'}`}>{String(r.id).slice(0,2).toUpperCase()}</div><div className="activity-person"><strong>{r.visitor_name || r.notes || (r.member_id ? 'Pago de socio' : r.total != null ? 'Venta de productos' : 'Movimiento')}</strong><small>{r.status || r.method || 'Registrado'}</small></div><div className="activity-time">{formatDate(r.created_at || r.sold_at || r.visited_at)}</div><strong className="activity-amount">{formatMoney(r.amount_paid ?? r.amount ?? r.total)}</strong></div>)}</div> : <Empty text="Aún no hay movimientos. Registra el primer socio, pago o venta."/>}</section>
