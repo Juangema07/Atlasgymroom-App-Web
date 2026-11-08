@@ -32,8 +32,26 @@ const methods = [{ value: 'cash', label: 'Efectivo' }, { value: 'transfer', labe
 const statuses = [{ value: 'active', label: 'Activo' }, { value: 'inactive', label: 'Inactivo' }, { value: 'expired', label: 'Vencido' }, { value: 'debt', label: 'Con saldo pendiente' }]
 const currency = new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 })
 const formatMoney = (value: unknown) => currency.format(Number(value || 0))
-const formatDate = (value: unknown) => value ? new Date(String(value)).toLocaleDateString('es-CO') : '—'
-const today = () => { const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10) }
+const bogotaDate = (value: Date) => {
+  const parts = new Intl.DateTimeFormat('en-GB', { timeZone: 'America/Bogota', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(value)
+  const part = (name: string) => parts.find(p => p.type === name)?.value || ''
+  return `${part('year')}-${part('month')}-${part('day')}`
+}
+const today = () => bogotaDate(new Date())
+const datePlusDays = (date: string, days: number) => {
+  const value = new Date(`${date}T12:00:00-05:00`)
+  value.setDate(value.getDate() + days)
+  return bogotaDate(value)
+}
+const dateInBogota = (value: unknown) => value
+  ? (/^\\d{4}-\\d{2}-\\d{2}$/.test(String(value)) ? String(value) : bogotaDate(new Date(String(value))))
+  : ''
+const formatDate = (value: unknown) => {
+  if (!value) return '—'
+  const raw = String(value)
+  const parsed = /^\\d{4}-\\d{2}-\\d{2}$/.test(raw) ? new Date(`${raw}T12:00:00-05:00`) : new Date(raw)
+  return parsed.toLocaleDateString('es-CO', { timeZone: 'America/Bogota' })
+}
 
 function configFor(section: Section, rows: Record<string, Row[]>): ModuleConfig | null {
   const memberOptions = (rows.members || []).map(m => ({ value: m.id, label: m.full_name }))
