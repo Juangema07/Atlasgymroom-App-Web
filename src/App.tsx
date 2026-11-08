@@ -205,7 +205,9 @@ export default function App() {
           { table: 'products', row },
           ...(Number(row.stock) > 0 ? [{ table: 'stock_movements' as const, row: { id: stockMovementId, product_id: row.id, movement_type: 'adjustment', quantity: Number(row.stock), notes: 'Existencias iniciales', created_by: session?.user.id || null, created_at: nowIso() } }] : []),
         ])
-      : await saveRow(moduleConfig.table, row)
+      : section === 'Productos' && editing
+        ? await updateRow(moduleConfig.table, row)
+        : await saveRow(moduleConfig.table, row)
     setBusy(false); setDialog(null); notify(result.message || (result.synced ? 'Registro guardado y sincronizado.' : 'Registro guardado localmente.'))
     await refresh()
   }

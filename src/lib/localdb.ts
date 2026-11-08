@@ -11,7 +11,7 @@ export type Row = Record<string, any> & { id: string; updated_at?: string; creat
 
 export type OutboxItem = {
   id: string
-  kind: 'upsert' | 'rpc'
+  kind: 'upsert' | 'update' | 'rpc'
   table?: EntityTable
   payload: any
   created_at: string

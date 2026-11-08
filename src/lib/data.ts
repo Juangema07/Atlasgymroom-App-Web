@@ -54,6 +54,32 @@ export async function saveRow(table: EntityTable, input: Row): Promise<SaveResul
   return { synced: true }
 }
 
+export async function updateRow(table: EntityTable, input: Row): Promise<SaveResult> {
+  const stamp = nowIso()
+  const row = { ...input, updated_at: stamp }
+  const previous = await entityStore(table).get(row.id)
+  await entityStore(table).put(row)
+
+  if (!supabaseConfigured || !supabase) return { synced: false, localOnly: true, message: 'Guardado solo en este dispositivo.' }
+  if (!await hasSession()) throw new Error('Inicia sesión para sincronizar los cambios.')
+  if (!navigator.onLine) {
+    await enqueue({ id: makeId(), kind: 'update', table, payload: row, optimistic: [{ table, id: row.id }], created_at: stamp })
+    return { synced: false, message: 'Guardado localmente. Pendiente de sincronización.' }
+  }
+
+  const { error } = await supabase.from(table).update(row).eq('id', row.id)
+  if (error) {
+    if (!('code' in error) || !error.code) {
+      await enqueue({ id: makeId(), kind: 'update', table, payload: row, optimistic: [{ table, id: row.id }], created_at: stamp })
+      return { synced: false, message: `Guardado localmente; sincronización pendiente: ${error.message}` }
+    }
+    if (previous) await entityStore(table).put(previous)
+    else await entityStore(table).delete(row.id)
+    return { synced: false, message: `El servidor rechazó la actualización: ${error.message}` }
+  }
+  return { synced: true }
+}
+
 export async function runBusinessRpc(
   rpc: 'create_product' | 'record_membership_payment' | 'complete_sale' | 'register_day_pass' | 'record_expense' | 'receive_purchase' | 'open_cash_session' | 'close_cash_session',
   args: Record<string, any>,
@@ -90,8 +116,10 @@ export async function syncPending(): Promise<{ synced: number; pending: number }
   let synced = 0
   for (const item of queue) {
     try {
-      if (item.kind === 'upsert' && item.table) {
-        const { error } = await supabase.from(item.table).upsert(item.payload, { onConflict: 'id' })
+      if ((item.kind === 'upsert' || item.kind === 'update') && item.table) {
+        const { error } = item.kind === 'update'
+          ? await supabase.from(item.table).update(item.payload).eq('id', item.payload.id)
+          : await supabase.from(item.table).upsert(item.payload, { onConflict: 'id' })
         if (error) throw error
       } else if (item.kind === 'rpc') {
         const { rpc, args } = item.payload
