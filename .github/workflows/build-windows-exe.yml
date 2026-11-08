@@ -8,7 +8,7 @@ on:
       - 'package.json'
       - '.github/workflows/build-windows-exe.yml'
 permissions:
-  contents: read
+  contents: write
 jobs:
   windows-exe:
     name: Windows installer
@@ -27,3 +27,11 @@ jobs:
           path: release/*.exe
           if-no-files-found: error
           retention-days: 30
+      - name: Publish Windows installer in GitHub Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: windows-v0.2.0
+          name: Atlasgymroom Windows v0.2.0
+          body: Instalador de escritorio para Windows x64. Se conecta a la aplicación web alojada y requiere conexión a internet.
+          files: release/*.exe
+          make_latest: false
