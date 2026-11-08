@@ -60,7 +60,7 @@ function configFor(section: Section, rows: Record<string, Row[]>): ModuleConfig 
   const planOptions = (rows.plans || []).map(p => ({ value: p.id, label: p.name }))
   const base: Partial<Record<Section, ModuleConfig>> = {
     Miembros: { table: 'members', title: 'Miembros', description: 'Perfiles, estado y vigencia de los socios.', fields: [
-      { key: 'full_name', label: 'Nombre completo', required: true }, { key: 'document', label: 'Documento', placeholder: 'Opcional' },
+      { key: 'full_name', label: 'Nombre completo', required: true }, { key: 'document', label: 'Cédula (obligatoria)', required: true, placeholder: 'Número de identificación' },
       { key: 'phone', label: 'Teléfono' }, { key: 'email', label: 'Correo', type: 'email' },
       { key: 'birth_date', label: 'Fecha de nacimiento', type: 'date' }, { key: 'current_plan_id', label: 'Plan', type: 'select', options: [{ value: '', label: 'Sin plan asignado' }, ...planOptions] },
       { key: 'start_date', label: 'Inicio', type: 'date' }, { key: 'end_date', label: 'Vencimiento', type: 'date' },
@@ -100,6 +100,8 @@ export default function App() {
   const [profile, setProfile] = useState<Row | null>(null)
   const [rows, setRows] = useState<Record<string, Row[]>>({})
   const [search, setSearch] = useState('')
+  const [attendanceLookup, setAttendanceLookup] = useState('')
+  const [memberLookup, setMemberLookup] = useState('')
   const [dialog, setDialog] = useState<'record' | 'payment' | 'daypass' | 'expense' | 'sale' | 'purchase' | 'cash' | null>(null)
   const [editing, setEditing] = useState<Row | null>(null)
   const [form, setForm] = useState<Record<string, string>>({})
@@ -186,6 +188,19 @@ export default function App() {
     setEditing(null); setForm({}); setSaleLines([]); setPurchaseLines([]); setDialog(which)
   }
 
+  async function registerMemberEntry(member: Row) {
+    const valid = member.status === 'active' && (!member.end_date || member.end_date >= today())
+    if (!valid) { notify(`${member.full_name}: la tarifa está vencida o pausada. Abre su ficha y registra un pago para habilitar el ingreso.`); return }
+    const id = makeId()
+    const row: Row = { id, member_id: member.id, visitor_name: null, entry_type: 'member', entered_at: nowIso(), created_by: session?.user.id || null, created_at: nowIso() }
+    setBusy(true)
+    const result = await saveRow('attendance', row)
+    setBusy(false)
+    notify(result.message || `Ingreso registrado: ${member.full_name}`)
+    setAttendanceLookup('')
+    await refresh()
+  }
+
   async function submitRecord(event: FormEvent) {
     event.preventDefault()
     if (!moduleConfig) return
@@ -194,7 +209,7 @@ export default function App() {
       if (field.type === 'number') row[field.key] = Number(form[field.key] || 0)
       if (field.key === 'active' || field.key === 'status' && section === 'Planes') row[field.key] = form[field.key] === 'true'
     }
-    if (section === 'Miembros') { row.status ||= 'active'; row.current_plan_id ||= null }
+    if (section === 'Miembros') { row.status ||= 'active'; row.current_plan_id ||= null; if (!String(row.document || '').trim()) { notify('La cédula es obligatoria para registrar un cliente.'); return } }
     if (section === 'Productos') { row.stock = Number(row.stock || 0); row.min_stock = Number(row.min_stock || 0); row.cost = Number(row.cost || 0); row.active = true }
     if (section === 'Asistencia') { row.member_id ||= null; row.visitor_name ||= null; row.entry_type ||= row.member_id ? 'member' : 'day_pass'; row.entered_at = nowIso() }
     if (section === 'Planes') row.active = form.active !== 'false'
@@ -366,6 +381,11 @@ export default function App() {
     {menuOpen && <button className="scrim" aria-label="Cerrar menú" onClick={() => setMenuOpen(false)}/>}
     <main className="main-content">
       <header className="topbar"><div className="topbar-left"><button className="menu-toggle" onClick={() => setMenuOpen(true)}><Menu/></button><div className="breadcrumb">Atlasgymroom <span>/</span> <strong>{section}</strong></div></div><div className="topbar-actions"><div className={`status-pill ${supabaseConfigured ? 'connected' : 'local'}`}>{supabaseConfigured ? <><Cloud size={13}/> Supabase</> : <><CloudOff size={13}/> Solo este dispositivo</>}</div><button className="sync-button" onClick={() => void sync()} title="Sincronizar"><RefreshCw size={15}/><span>{syncCount ? `${syncCount} pendientes` : 'Sin pendientes'}</span></button><div className="avatar owner">{userLabel.slice(0,2).toUpperCase()}</div></div></header>
+      <section className="front-desk-bar">
+        <div className="desk-search"><label><Activity size={15}/> Registrar asistencia</label><input value={attendanceLookup} onChange={e=>setAttendanceLookup(e.target.value)} placeholder="Cédula o nombre del cliente…"/>{attendanceLookup.trim() && <div className="lookup-results">{members.filter(m=>String(m.document||'').toLowerCase().includes(attendanceLookup.toLowerCase())||String(m.full_name||'').toLowerCase().includes(attendanceLookup.toLowerCase())).slice(0,6).map(m=><button key={m.id} disabled={busy} onClick={()=>void registerMemberEntry(m)}><span><strong>{m.full_name}</strong><small>C.C. {m.document} · {m.end_date && m.end_date >= today() && m.status==='active'?'Tarifa vigente':'Revisar tarifa'}</small></span><b>Registrar entrada</b></button>)}{!members.some(m=>String(m.document||'').toLowerCase().includes(attendanceLookup.toLowerCase())||String(m.full_name||'').toLowerCase().includes(attendanceLookup.toLowerCase()))&&<p>No encontramos ese cliente. Regístralo desde Clientes.</p>}</div>}</div>
+        <div className="desk-search"><label><Users size={15}/> Buscar / gestionar cliente</label><input value={memberLookup} onChange={e=>setMemberLookup(e.target.value)} placeholder="Cédula o nombre para abrir su ficha…"/>{memberLookup.trim() && <div className="lookup-results">{members.filter(m=>String(m.document||'').toLowerCase().includes(memberLookup.toLowerCase())||String(m.full_name||'').toLowerCase().includes(memberLookup.toLowerCase())).slice(0,6).map(m=><button key={m.id} onClick={()=>{setSection('Miembros');setMemberLookup('');setSearch(String(m.document||m.full_name||''));setEditing(m);const initial:Record<string,string>={};configFor('Miembros',rows)?.fields.forEach(f=>initial[f.key]=m[f.key]==null?'':String(m[f.key]));setForm(initial);setDialog('record')}}><span><strong>{m.full_name}</strong><small>C.C. {m.document} · {m.status==='active'?'Activo':'Pausado / vencido'}</small></span><b>Abrir ficha</b></button>)}</div>}</div>
+        <div className="desk-shortcuts"><button onClick={()=>handleSection('Miembros')}><Plus size={15}/> Nuevo cliente</button><button onClick={()=>handleSection('Pagos')}><CircleDollarSign size={15}/> Registrar pago</button><button onClick={()=>handleSection('Planes')}><ClipboardList size={15}/> Tarifas</button></div>
+      </section>
       {!supabaseConfigured && <div className="local-warning"><AlertTriangle size={16}/><span><strong>Modo local:</strong> la información se guarda solo en este navegador. Configura Supabase y accede con una cuenta antes de registrar datos reales.</span></div>}
       {supabaseConfigured && syncCount > 0 && <div className="sync-warning"><CloudOff size={15}/><span>{syncCount} operación(es) esperando sincronización. No cierres ni borres los datos del navegador hasta recuperar la conexión.</span><button onClick={() => void sync()}>Reintentar</button></div>}
       <div className="page">
