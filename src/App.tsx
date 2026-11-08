@@ -157,6 +157,7 @@ export default function App() {
   const [menuOpen, setMenuOpen] = useState(false)
   const [session, setSession] = useState<Session | null>(null)
   const [authLoading, setAuthLoading] = useState(Boolean(supabaseConfigured))
+  const [recoveryMode, setRecoveryMode] = useState(false)
   const [profile, setProfile] = useState<Row | null>(null)
   const [rows, setRows] = useState<Record<string, Row[]>>({})
   const [search, setSearch] = useState('')
@@ -195,7 +196,10 @@ export default function App() {
   useEffect(() => {
     if (!supabase) { setAuthLoading(false); return }
     supabase.auth.getSession().then(({ data }) => { setSession(data.session); setAuthLoading(false) })
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, next) => setSession(next))
+    const { data: listener } = supabase.auth.onAuthStateChange((event, next) => {
+      setSession(next)
+      if (event === 'PASSWORD_RECOVERY') setRecoveryMode(true)
+    })
     return () => listener.subscription.unsubscribe()
   }, [])
 
@@ -240,6 +244,25 @@ export default function App() {
     const { error } = await supabase.auth.signInWithPassword({ email, password })
     setBusy(false)
     if (error) setToast(error.message)
+  }
+  async function requestPasswordRecovery(email: string) {
+    if (!supabase || !email.trim()) { setToast('Escribe tu correo electrónico.'); return }
+    setBusy(true)
+    const redirectTo = window.location.origin + import.meta.env.BASE_URL
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo })
+    setBusy(false)
+    setToast(error ? error.message : 'Te enviamos un enlace. Revisa tu correo y abre el enlace más reciente en este mismo sitio.')
+  }
+  async function saveNewPassword(password: string) {
+    if (!supabase) return
+    setBusy(true)
+    const { error } = await supabase.auth.updateUser({ password })
+    setBusy(false)
+    if (error) { setToast(error.message); return }
+    await supabase.auth.signOut()
+    setSession(null)
+    setRecoveryMode(false)
+    setToast('Contraseña actualizada. Ya puedes iniciar sesión con la nueva contraseña.')
   }
   async function signOut() { await supabase?.auth.signOut(); setSection('Inicio') }
 
@@ -539,7 +562,8 @@ export default function App() {
   }
 
   if (authLoading) return <div className="auth-screen"><div className="auth-card"><div className="brand-mark"><Dumbbell/></div><p>Comprobando acceso seguro…</p></div></div>
-  if (supabaseConfigured && !session) return <Login onSignIn={signIn} busy={busy} toast={toast} />
+  if (supabaseConfigured && recoveryMode && session) return <PasswordRecovery onSave={saveNewPassword} busy={busy} toast={toast} />
+  if (supabaseConfigured && !session) return <Login onSignIn={signIn} onForgotPassword={requestPasswordRecovery} busy={busy} toast={toast} />
     const members = rows.members || []
   const recentPayments = rows.payments || []
   const activeMembers = members.filter(m => m.status === 'active' && (!m.end_date || m.end_date >= today())).length
@@ -669,11 +693,16 @@ export default function App() {
   </div>
 }
 
-function Login({ onSignIn, busy, toast }: { onSignIn: (email: string, password: string) => void; busy: boolean; toast: string }) {
+function Login({ onSignIn, onForgotPassword, busy, toast }: { onSignIn: (email: string, password: string) => void; onForgotPassword: (email: string) => void; busy: boolean; toast: string }) {
   const [email,setEmail] = useState(''); const [password,setPassword] = useState('')
-  return <div className="auth-screen"><form className="auth-card" onSubmit={e => { e.preventDefault(); onSignIn(email,password) }}><div className="brand-mark"><Dumbbell size={23}/></div><div className="eyebrow">ATLASGYMROOM</div><h1>Bienvenido</h1><p>Ingresa con tu cuenta individual para administrar el gimnasio.</p><label>Correo electrónico<input type="email" value={email} onChange={e => setEmail(e.target.value)} required autoComplete="username"/></label><label>Contraseña<input type="password" value={password} onChange={e => setPassword(e.target.value)} required autoComplete="current-password"/></label><button className="primary-button auth-submit" disabled={busy}><LockKeyhole size={16}/>{busy ? 'Ingresando…' : 'Iniciar sesión'}</button>{toast && <div className="auth-error">{toast}</div>}<small>Las cuentas las crea el propietario desde Supabase Auth. No hay registro público.</small></form></div>
+  return <div className="auth-screen"><form className="auth-card" onSubmit={e => { e.preventDefault(); onSignIn(email,password) }}><div className="brand-mark"><Dumbbell size={23}/></div><div className="eyebrow">ATLASGYMROOM</div><h1>Bienvenido</h1><p>Ingresa con tu cuenta individual para administrar el gimnasio.</p><label>Correo electrónico<input type="email" value={email} onChange={e => setEmail(e.target.value)} required autoComplete="username"/></label><label>Contraseña<input type="password" value={password} onChange={e => setPassword(e.target.value)} required autoComplete="current-password"/></label><button className="primary-button auth-submit" disabled={busy}><LockKeyhole size={16}/>{busy ? 'Ingresando…' : 'Iniciar sesión'}</button><button type="button" className="auth-link" disabled={busy || !email.trim()} onClick={() => onForgotPassword(email)}>Olvidé mi contraseña</button>{toast && <div className="auth-error">{toast}</div>}<small>Las cuentas las crea el propietario desde Supabase Auth. No hay registro público.</small></form></div>
 }
 
+function PasswordRecovery({ onSave, busy, toast }: { onSave: (password: string) => void; busy: boolean; toast: string }) {
+  const [password,setPassword] = useState(''); const [confirm,setConfirm] = useState('')
+  const mismatch = confirm.length > 0 && password !== confirm
+  return <div className="auth-screen"><form className="auth-card" onSubmit={e => { e.preventDefault(); if (password.length < 8 || password !== confirm) return; onSave(password) }}><div className="brand-mark"><LockKeyhole size={23}/></div><div className="eyebrow">ATLASGYMROOM · SEGURIDAD</div><h1>Nueva contraseña</h1><p>Elige una contraseña nueva para recuperar el acceso a tu cuenta.</p><label>Nueva contraseña<input type="password" value={password} onChange={e => setPassword(e.target.value)} required minLength={8} autoComplete="new-password"/></label><label>Confirmar contraseña<input type="password" value={confirm} onChange={e => setConfirm(e.target.value)} required minLength={8} autoComplete="new-password"/></label>{mismatch && <div className="auth-error">Las contraseñas no coinciden.</div>}<button className="primary-button auth-submit" disabled={busy || password.length < 8 || password !== confirm}><LockKeyhole size={16}/>{busy ? 'Guardando…' : 'Guardar nueva contraseña'}</button>{toast && <div className="auth-error">{toast}</div>}<small>Usa al menos 8 caracteres. Al guardar, volverás al inicio de sesión.</small></form></div>
+}
 function Dashboard(props: { activeMembers: number; expiredMembers: number; total: number; todayIncome: number; todayAttendances: number; expiring: number; stockLow: Row[]; rows: Record<string,Row[]>; onNavigate:(s:Section)=>void }) {
   const day=today(),weekStart=datePlusDays(day,-6),monthStart=day.slice(0,7)+'-01'
   const payments=props.rows.payments||[],sales=props.rows.sales||[],passes=props.rows.day_passes||[],products=props.rows.products||[]
