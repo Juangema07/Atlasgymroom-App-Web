@@ -342,7 +342,9 @@ export default function App() {
     const amount = Number(form.amount || 0), amount_paid = Number(form.amount_paid === undefined || form.amount_paid === '' ? form.amount || 0 : form.amount_paid)
     const payment: Row = { id, member_id: form.member_id, plan_id: form.plan_id || null, amount, amount_paid, method: form.method || 'cash', status: amount_paid === 0 ? 'pending' : amount_paid < amount ? 'partial' : 'paid', paid_at: amount_paid > 0 ? nowIso() : null, notes: form.notes || null, created_by: session?.user.id || null, created_at: nowIso() }
     const member = rows.members?.find(m => m.id === form.member_id)
-    const plan = rows.plans?.find(p => p.id === form.plan_id)
+    const plan = rows.plans?.find(p => p.id === form.plan_id && p.active !== false)
+    if (!member || !plan || amount <= 0 || amount_paid < 0 || amount_paid > amount) { notify('Selecciona un cliente y una tarifa activa; revisa el valor y el dinero recibido.'); return }
+    if (plan.allow_price_change === false && amount !== Number(plan.price)) { notify('Esta tarifa no permite modificar su precio.'); return }
     const optimistic: { table: EntityTable; row: Row }[] = [{ table: 'payments', row: payment }]
     const cashMovementId = makeId()
     if (amount_paid > 0) optimistic.push({ table: 'cash_movements', row: { id: cashMovementId, cash_session_id: activeSession?.id || null, direction: 'income', amount: amount_paid, method: form.method || 'cash', description: 'Pago de mensualidad', reference_id: id, created_by: session?.user.id || null, created_at: nowIso() } })
@@ -550,7 +552,7 @@ export default function App() {
       {dialog === 'payment' && <form className="form-grid" onSubmit={submitPayment}>
         <FieldInput field={{ key: 'member_id', label: 'Socio', type: 'select', options: memberOptions, required: true }} value={form.member_id || ''} onChange={v => { const member = rows.members?.find(m => m.id === v); const plan = rows.plans?.find(p => p.id === member?.current_plan_id && p.active !== false); setForm(f => ({ ...f, member_id: v, plan_id: plan?.id || '', amount: plan ? String(plan.price) : f.amount, amount_paid: plan ? String(plan.price) : f.amount_paid })) }}/>
         <FieldInput field={{ key: 'plan_id', label: 'Tarifa', type: 'select', required: true, options: (rows.plans || []).filter(p => p.active !== false).map(p => ({ value: p.id, label: p.name })) }} value={form.plan_id || ''} onChange={v => { const plan = rows.plans?.find(p => p.id === v); setForm(f => ({ ...f, plan_id: v, amount: plan ? String(plan.price) : f.amount, amount_paid: plan ? String(plan.price) : f.amount_paid })) }}/>
-        <FieldInput field={{ key: 'amount', label: 'Valor a cobrar (COP)', type: 'number', required: true }} value={form.amount || ''} onChange={v => setForm(f => ({ ...f, amount: v }))}/>
+        <FieldInput field={{ key: 'amount', label: 'Valor a cobrar (COP)', type: 'number', required: true, disabled: rows.plans?.find(p => p.id === form.plan_id)?.allow_price_change === false }} value={form.amount || ''} onChange={v => setForm(f => ({ ...f, amount: v }))}/>
         <FieldInput field={{ key: 'amount_paid', label: 'Dinero recibido (COP)', type: 'number', required: true }} value={form.amount_paid ?? form.amount ?? ''} onChange={v => setForm(f => ({ ...f, amount_paid: v }))}/>
         <FieldInput field={{ key: 'method', label: 'Método de pago', type: 'select', options: methods }} value={form.method || 'cash'} onChange={v => setForm(f => ({ ...f, method: v }))}/>
         <FieldInput field={{ key: 'notes', label: 'Observaciones' }} value={form.notes || ''} onChange={v => setForm(f => ({ ...f, notes: v }))}/>

@@ -330,11 +330,16 @@ as $$
 declare pid uuid := (p_payment->>'id')::uuid; mid uuid := (p_payment->>'member_id')::uuid;
   plid uuid := nullif(p_payment->>'plan_id','')::uuid; amt numeric := coalesce((p_payment->>'amount')::numeric,0);
   paid numeric := coalesce((p_payment->>'amount_paid')::numeric,0); method_name text := coalesce(p_payment->>'method','cash');
-  plan_days integer; start_on date; inserted integer;
+  plan_days integer; start_on date; inserted integer; plan_price numeric; price_editable boolean; plan_active boolean;
 begin
   if not public.is_staff() then raise exception 'No autorizado'; end if;
   if exists(select 1 from public.payments where id=pid) then return pid; end if;
-  if amt < 0 or paid < 0 or paid > amt then raise exception 'Valor de pago inválido'; end if;
+  if amt <= 0 or paid < 0 or paid > amt or plid is null then raise exception 'Selecciona una tarifa y verifica el valor del pago'; end if;
+  select duration_days, price, allow_price_change, active
+    into plan_days, plan_price, price_editable, plan_active
+    from public.plans where id=plid;
+  if plan_days is null or plan_active is not true then raise exception 'La tarifa no existe o está inactiva'; end if;
+  if price_editable is false and amt <> plan_price then raise exception 'Esta tarifa no permite modificar su precio'; end if;
   insert into public.payments(id,member_id,plan_id,amount,amount_paid,method,status,paid_at,notes,created_by)
   values(pid,mid,plid,amt,paid,method_name,
     case when paid=0 then 'pending' when paid < amt then 'partial' else 'paid' end,
@@ -345,7 +350,6 @@ begin
     values(coalesce(nullif(p_payment->>'cash_movement_id','')::uuid,gen_random_uuid()),(select id from public.cash_sessions where status='open' limit 1),'income',paid,method_name,'Pago de mensualidad',pid,auth.uid());
   end if;
   if paid >= amt and amt > 0 and plid is not null then
-    select duration_days into plan_days from public.plans where id=plid;
     if plan_days is null then raise exception 'Plan no encontrado'; end if;
     select case when end_date >= timezone('America/Bogota', now())::date and status='active' and paused_at is null then end_date + 1 else timezone('America/Bogota', now())::date end
       into start_on from public.members where id=mid for update;
