@@ -66,12 +66,12 @@ const navGroups: NavGroup[] = [
 const methods = [{ value: 'cash', label: 'Efectivo' }, { value: 'transfer', label: 'Transferencia' }, { value: 'nequi', label: 'Nequi' }, { value: 'card', label: 'Datáfono / tarjeta' }, { value: 'other', label: 'Otro' }]
 const statuses = [{ value: 'active', label: 'Activo' }, { value: 'inactive', label: 'Inactivo' }, { value: 'expired', label: 'Vencido' }, { value: 'debt', label: 'Con saldo pendiente' }]
 const defaultTariffs: Row[] = [
-  { id: '10000000-0000-4000-8000-000000000001', name: 'Diario', duration_days: 1, price: 4000, active: true, notes: 'Acceso por un día' },
-  { id: '10000000-0000-4000-8000-000000000002', name: 'Quincenal', duration_days: 15, price: 30000, active: true, notes: 'Tarifa por 15 días' },
-  { id: '10000000-0000-4000-8000-000000000003', name: 'Mensual', duration_days: 30, price: 60000, active: true, notes: 'Tarifa por 30 días' },
-  { id: '10000000-0000-4000-8000-000000000004', name: 'Ticket 5 días', duration_days: 5, price: 0, active: false, notes: 'Definir precio y activar antes de vender' },
-  { id: '10000000-0000-4000-8000-000000000005', name: 'Ticket 10 días', duration_days: 10, price: 0, active: false, notes: 'Definir precio y activar antes de vender' },
-  { id: '10000000-0000-4000-8000-000000000006', name: 'Ticket 15 días', duration_days: 15, price: 0, active: false, notes: 'Definir precio y activar antes de vender' },
+  { id: '10000000-0000-4000-8000-000000000001', name: 'Diario', plan_type: 'normal', duration_days: 1, ticket_quantity: 0, price: 4000, active: true, allow_price_change: true, start_time: '05:00', end_time: '22:00', second_start_time: '12:00', second_end_time: '12:00', available_days: 'Lun,Mar,Mie,Jue,Vie,Sab,Dom', includes_tax: false, sale_price: 0, taxes: '', notes: 'Acceso por un día' },
+  { id: '10000000-0000-4000-8000-000000000002', name: 'Quincenal', plan_type: 'normal', duration_days: 15, ticket_quantity: 0, price: 30000, active: true, allow_price_change: true, start_time: '05:00', end_time: '22:00', second_start_time: '12:00', second_end_time: '12:00', available_days: 'Lun,Mar,Mie,Jue,Vie,Sab,Dom', includes_tax: false, sale_price: 0, taxes: '', notes: 'Tarifa por 15 días' },
+  { id: '10000000-0000-4000-8000-000000000003', name: 'Mensual', plan_type: 'normal', duration_days: 30, ticket_quantity: 0, price: 60000, active: true, allow_price_change: true, start_time: '05:00', end_time: '22:00', second_start_time: '12:00', second_end_time: '12:00', available_days: 'Lun,Mar,Mie,Jue,Vie,Sab,Dom', includes_tax: false, sale_price: 0, taxes: '', notes: 'Tarifa por 30 días' },
+  { id: '10000000-0000-4000-8000-000000000004', name: 'Ticket 5 días', plan_type: 'ticket', duration_days: 5, ticket_quantity: 5, price: 0, active: false, allow_price_change: true, start_time: '05:00', end_time: '22:00', second_start_time: '12:00', second_end_time: '12:00', available_days: 'Lun,Mar,Mie,Jue,Vie,Sab,Dom', includes_tax: false, sale_price: 0, taxes: '', notes: 'Definir precio y activar antes de vender' },
+  { id: '10000000-0000-4000-8000-000000000005', name: 'Ticket 10 días', plan_type: 'ticket', duration_days: 10, ticket_quantity: 10, price: 0, active: false, allow_price_change: true, start_time: '05:00', end_time: '22:00', second_start_time: '12:00', second_end_time: '12:00', available_days: 'Lun,Mar,Mie,Jue,Vie,Sab,Dom', includes_tax: false, sale_price: 0, taxes: '', notes: 'Definir precio y activar antes de vender' },
+  { id: '10000000-0000-4000-8000-000000000006', name: 'Ticket 15 días', plan_type: 'ticket', duration_days: 15, ticket_quantity: 15, price: 0, active: false, allow_price_change: true, start_time: '05:00', end_time: '22:00', second_start_time: '12:00', second_end_time: '12:00', available_days: 'Lun,Mar,Mie,Jue,Vie,Sab,Dom', includes_tax: false, sale_price: 0, taxes: '', notes: 'Definir precio y activar antes de vender' },
 ]
 const currency = new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 })
 const formatMoney = (value: unknown) => currency.format(Number(value || 0))
@@ -109,11 +109,23 @@ function configFor(section: Section, rows: Record<string, Row[]>): ModuleConfig 
       { key: 'start_date', label: 'Inicio', type: 'date' }, { key: 'end_date', label: 'Vencimiento', type: 'date' },
       { key: 'status', label: 'Estado', type: 'select', options: statuses }, { key: 'notes', label: 'Notas', type: 'textarea' },
     ], columns: [{ key: 'full_name', label: 'Nombre' }, { key: 'document', label: 'Cédula' }, { key: 'phone', label: 'Teléfono' }, { key: 'status', label: 'Estado' }, { key: 'end_date', label: 'Vence' }] },
-    Planes: { table: 'plans', title: 'Tarifas', description: 'Configura membresías, duración y precio.', fields: [
-      { key: 'name', label: 'Nombre del plan', required: true }, { key: 'duration_days', label: 'Duración en días', type: 'number', required: true },
-      { key: 'price', label: 'Precio (COP)', type: 'number', required: true }, { key: 'active', label: 'Estado', type: 'select', options: [{ value: 'true', label: 'Activo' }, { value: 'false', label: 'Inactivo' }] },
+    Planes: { table: 'plans', title: 'Tarifas', description: 'Configura duración, precio, horarios, días disponibles e información tributaria.', fields: [
+      { key: 'name', label: 'Nombre de la tarifa', required: true },
+      { key: 'plan_type', label: 'Tipo de tarifa', type: 'select', options: [{ value: 'normal', label: 'Normal' }, { value: 'ticket', label: 'Ticket por días' }] },
+      { key: 'price', label: 'Valor (COP)', type: 'number', required: true },
+      { key: 'duration_days', label: 'Cantidad de días', type: 'number', required: true },
+      { key: 'ticket_quantity', label: 'Cantidad de tiquetes', type: 'number' },
+      { key: 'allow_price_change', label: 'Modificar precio', type: 'select', options: [{ value: 'true', label: 'Sí' }, { value: 'false', label: 'No' }] },
+      { key: 'active', label: 'Estado', type: 'select', options: [{ value: 'true', label: 'Activa' }, { value: 'false', label: 'Inactiva' }] },
+      { key: 'start_time', label: 'Hora desde', type: 'time' }, { key: 'end_time', label: 'Hora hasta', type: 'time' },
+      { key: 'second_start_time', label: 'Hora desde 2', type: 'time' }, { key: 'second_end_time', label: 'Hora hasta 2', type: 'time' },
+      { key: 'available_days', label: 'Disponible los días', placeholder: 'Lun,Mar,Mie,Jue,Vie,Sab,Dom' },
+      { key: 'tax_classification', label: 'Clasificación tributaria' }, { key: 'internal_code', label: 'Código interno (DIAN)' },
+      { key: 'sale_price', label: 'Precio (valor de venta)', type: 'number' },
+      { key: 'includes_tax', label: 'Incluye impuestos', type: 'select', options: [{ value: 'true', label: 'Sí' }, { value: 'false', label: 'No' }] },
+      { key: 'taxes', label: 'Impuestos / observaciones', type: 'textarea' },
       { key: 'notes', label: 'Descripción', type: 'textarea' },
-    ], columns: [{ key: 'name', label: 'Plan' }, { key: 'duration_days', label: 'Días' }, { key: 'price', label: 'Precio' }, { key: 'active', label: 'Estado' }] },
+    ], columns: [{ key: 'name', label: 'Tarifa' }, { key: 'duration_days', label: 'Días' }, { key: 'ticket_quantity', label: 'Tiquetes' }, { key: 'price', label: 'Precio' }, { key: 'active', label: 'Estado' }] },
     Asistencia: { table: 'attendance', title: 'Asistencia', description: 'Registra entradas de socios o visitantes.', fields: [
       { key: 'member_id', label: 'Socio', type: 'select', options: [{ value: '', label: 'No es socio / visitante' }, ...memberOptions] },
       { key: 'visitor_name', label: 'Nombre del visitante' }, { key: 'entry_type', label: 'Tipo', type: 'select', options: [{ value: 'member', label: 'Socio' }, { value: 'day_pass', label: 'Pase diario' }] },
@@ -271,7 +283,7 @@ export default function App() {
   }
 
   async function registerMemberEntry(member: Row) {
-    const valid = member.status === 'active' && !member.paused_at && (!member.end_date || member.end_date >= today())
+    const valid = member.status === 'active' && !member.paused_at && Boolean(member.current_plan_id) && Boolean(member.end_date) && member.end_date >= today()
     if (!valid) { notify(`${member.full_name}: la tarifa está vencida o pausada. Abre su ficha y registra un pago para habilitar el ingreso.`); return }
     const alreadyEntered = (rows.attendance || []).some(a => a.member_id === member.id && dateInBogota(a.entered_at) === today())
     if (alreadyEntered) { notify(member.full_name + ' ya tiene una entrada registrada hoy.'); setAttendanceLookup(''); return }
@@ -291,7 +303,7 @@ export default function App() {
     const row: Row = { ...(editing || {}), id: editing?.id || makeId(), ...Object.fromEntries(Object.entries(form).map(([key,value]) => [key, value === '' ? null : value])), created_by: editing?.created_by || session?.user.id || null, updated_at: nowIso() }
     for (const field of moduleConfig.fields) {
       if (field.type === 'number') row[field.key] = Number(form[field.key] || 0)
-      if (field.key === 'active' || field.key === 'status' && section === 'Planes') row[field.key] = form[field.key] === 'true'
+      if (['active','allow_price_change','includes_tax'].includes(field.key)) row[field.key] = form[field.key] === 'true'
     }
     if (section === 'Miembros') {
       row.status ||= 'active'; row.current_plan_id ||= null
@@ -301,7 +313,12 @@ export default function App() {
       row.document = document
     }
     if (section === 'Productos') { row.stock = Number(row.stock || 0); row.min_stock = Number(row.min_stock || 0); row.cost = Number(row.cost || 0); row.active = true }
-    if (section === 'Asistencia') { row.member_id ||= null; row.visitor_name ||= null; row.entry_type ||= row.member_id ? 'member' : 'day_pass'; row.entered_at = nowIso() }
+    if (section === 'Asistencia') {
+      row.member_id ||= null; row.visitor_name ||= null; row.entry_type ||= row.member_id ? 'member' : 'day_pass'
+      if (row.member_id) { const linked = rows.members?.find(m => m.id === row.member_id); if (!linked || linked.status !== 'active' || linked.paused_at || !linked.current_plan_id || !linked.end_date || linked.end_date < today()) { notify('El cliente no tiene una tarifa vigente.'); return } if ((rows.attendance || []).some(a => a.member_id === row.member_id && dateInBogota(a.entered_at) === today())) { notify('Este cliente ya tiene una entrada registrada hoy.'); return } }
+      if (!row.member_id && !row.visitor_name) { notify('Selecciona un cliente o escribe el nombre del visitante.'); return }
+      row.entered_at = nowIso()
+    }
     if (section === 'Planes') row.active = form.active !== 'false'
     setBusy(true)
     const stockMovementId = makeId()
@@ -328,7 +345,7 @@ export default function App() {
     const cashMovementId = makeId()
     if (amount_paid > 0) optimistic.push({ table: 'cash_movements', row: { id: cashMovementId, cash_session_id: activeSession?.id || null, direction: 'income', amount: amount_paid, method: form.method || 'cash', description: 'Pago de mensualidad', reference_id: id, created_by: session?.user.id || null, created_at: nowIso() } })
     if (member && plan && amount_paid >= amount && amount > 0) {
-      const beginDate = member.end_date && member.end_date >= today() ? datePlusDays(member.end_date, 1) : today()
+      const beginDate = member.end_date && member.end_date >= today() && member.status === 'active' && !member.paused_at ? datePlusDays(member.end_date, 1) : today()
       const endDate = datePlusDays(beginDate, Number(plan.duration_days) - 1)
       optimistic.push({ table: 'members' as const, row: { ...member, current_plan_id: plan.id, start_date: beginDate, end_date: endDate, status: 'active', updated_at: nowIso() } })
     }
@@ -504,7 +521,7 @@ export default function App() {
       <section className="front-desk-bar">
         <div className="desk-search"><label><Activity size={15}/> Registrar asistencia</label><input value={attendanceLookup} onChange={e=>setAttendanceLookup(e.target.value)} placeholder="Cédula o nombre del cliente…"/>{attendanceLookup.trim() && <div className="lookup-results">{members.filter(m=>String(m.document||'').toLowerCase().includes(attendanceLookup.toLowerCase())||String(m.full_name||'').toLowerCase().includes(attendanceLookup.toLowerCase())).slice(0,6).map(m=><button key={m.id} disabled={busy} onClick={()=>void registerMemberEntry(m)}><span><strong>{m.full_name}</strong><small>C.C. {m.document} · {m.end_date && m.end_date >= today() && m.status==='active'?'Tarifa vigente':'Revisar tarifa'}</small></span><b>Registrar entrada</b></button>)}{!members.some(m=>String(m.document||'').toLowerCase().includes(attendanceLookup.toLowerCase())||String(m.full_name||'').toLowerCase().includes(attendanceLookup.toLowerCase()))&&<p>No encontramos ese cliente. Regístralo desde Clientes.</p>}</div>}</div>
         <div className="desk-search"><label><Users size={15}/> Buscar / gestionar cliente</label><input value={memberLookup} onChange={e=>setMemberLookup(e.target.value)} placeholder="Cédula o nombre para abrir su ficha…"/>{memberLookup.trim() && <div className="lookup-results">{members.filter(m=>String(m.document||'').toLowerCase().includes(memberLookup.toLowerCase())||String(m.full_name||'').toLowerCase().includes(memberLookup.toLowerCase())).slice(0,6).map(m=><div className="lookup-member-row" key={m.id}><span><strong>{m.full_name}</strong><small>C.C. {m.document} · {m.paused_at?'Pausado':m.end_date && m.end_date < today()?'Vencido':'Activo'}</small></span><div><button onClick={()=>{setSection('Miembros');setMemberLookup('');setSearch('');setEditing(m);const initial:Record<string,string>={};configFor('Miembros',rows)?.fields.forEach(f=>initial[f.key]=m[f.key]==null?'':String(m[f.key]));setForm(initial);setDialog('record')}}>Abrir ficha</button><button onClick={()=>{setMemberLookup('');openMemberPayment(m)}}>Pago</button><button onClick={()=>{setMemberLookup('');void toggleMemberPause(m)}}>{m.paused_at?'Reactivar':'Pausar'}</button></div></div>)}</div>}</div>
-        <div className="desk-shortcuts"><button onClick={()=>handleSection('Miembros')}><Plus size={15}/> Nuevo cliente</button><button onClick={()=>handleSection('Pagos')}><CircleDollarSign size={15}/> Registrar pago</button><button onClick={()=>handleSection('Planes')}><ClipboardList size={15}/> Tarifas</button></div>
+        <div className="desk-shortcuts"><button onClick={()=>{setSection('Miembros');setEditing(null);const fields=configFor('Miembros',rows)?.fields||[];const blank:Record<string,string>={};fields.forEach(field=>blank[field.key]='');setForm(blank);setDialog('record')}}><Plus size={15}/> Nuevo cliente</button><button onClick={()=>openSpecial('payment')}><CircleDollarSign size={15}/> Registrar pago</button><button onClick={()=>handleSection('Tarifas')}><ClipboardList size={15}/> Tarifas</button></div>
       </section>
       {!supabaseConfigured && <div className="local-warning"><AlertTriangle size={16}/><span><strong>Modo local:</strong> la información se guarda solo en este navegador. Configura Supabase y accede con una cuenta antes de registrar datos reales.</span></div>}
       {supabaseConfigured && syncCount > 0 && <div className="sync-warning"><CloudOff size={15}/><span>{syncCount} operación(es) esperando sincronización. No cierres ni borres los datos del navegador hasta recuperar la conexión.</span><button onClick={() => void sync()}>Reintentar</button></div>}

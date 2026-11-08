@@ -35,14 +35,42 @@ as $$ select coalesce(public.current_app_role() = 'owner', false) $$;
 create table if not exists public.plans (
   id uuid primary key default gen_random_uuid(),
   name text not null,
+  plan_type text not null default 'normal' check (plan_type in ('normal','ticket')),
   duration_days integer not null check (duration_days > 0),
+  ticket_quantity integer not null default 0 check (ticket_quantity >= 0),
   price numeric(12,2) not null check (price >= 0),
+  allow_price_change boolean not null default true,
+  start_time time not null default '05:00',
+  end_time time not null default '22:00',
+  second_start_time time not null default '12:00',
+  second_end_time time not null default '12:00',
+  available_days text not null default 'Lun,Mar,Mie,Jue,Vie,Sab,Dom',
+  tax_classification text,
+  internal_code text,
+  sale_price numeric(12,2) not null default 0 check (sale_price >= 0),
+  includes_tax boolean not null default false,
+  taxes text,
   active boolean not null default true,
   notes text,
   created_by uuid references auth.users(id),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+-- Mantiene compatibilidad si la tabla ya existía en una instalación de prueba.
+alter table public.plans add column if not exists plan_type text not null default 'normal';
+alter table public.plans add column if not exists ticket_quantity integer not null default 0;
+alter table public.plans add column if not exists allow_price_change boolean not null default true;
+alter table public.plans add column if not exists start_time time not null default '05:00';
+alter table public.plans add column if not exists end_time time not null default '22:00';
+alter table public.plans add column if not exists second_start_time time not null default '12:00';
+alter table public.plans add column if not exists second_end_time time not null default '12:00';
+alter table public.plans add column if not exists available_days text not null default 'Lun,Mar,Mie,Jue,Vie,Sab,Dom';
+alter table public.plans add column if not exists tax_classification text;
+alter table public.plans add column if not exists internal_code text;
+alter table public.plans add column if not exists sale_price numeric(12,2) not null default 0;
+alter table public.plans add column if not exists includes_tax boolean not null default false;
+alter table public.plans add column if not exists taxes text;
 
 create table if not exists public.members (
   id uuid primary key default gen_random_uuid(),
@@ -62,6 +90,9 @@ create table if not exists public.members (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.members add column if not exists paused_at date;
+alter table public.members add column if not exists paused_days integer not null default 0;
 
 create table if not exists public.payments (
   id uuid primary key default gen_random_uuid(),
@@ -316,7 +347,7 @@ begin
   if paid >= amt and amt > 0 and plid is not null then
     select duration_days into plan_days from public.plans where id=plid;
     if plan_days is null then raise exception 'Plan no encontrado'; end if;
-    select case when end_date >= timezone('America/Bogota', now())::date then end_date + 1 else timezone('America/Bogota', now())::date end
+    select case when end_date >= timezone('America/Bogota', now())::date and status='active' and paused_at is null then end_date + 1 else timezone('America/Bogota', now())::date end
       into start_on from public.members where id=mid for update;
     update public.members set current_plan_id=plid, start_date=start_on,
       end_date=start_on + plan_days - 1, status='active', paused_at=null, updated_at=now() where id=mid;
@@ -353,7 +384,7 @@ begin
   if next_paid>=pay.amount and pay.plan_id is not null then
     select duration_days into plan_days from public.plans where id=pay.plan_id;
     if plan_days is null then raise exception 'No se encontró la tarifa asociada'; end if;
-    select case when end_date >= timezone('America/Bogota',now())::date and status='active'
+    select case when end_date >= timezone('America/Bogota',now())::date and status='active' and paused_at is null
       then end_date+1 else timezone('America/Bogota',now())::date end
     into start_on from public.members where id=pay.member_id for update;
     update public.members set current_plan_id=pay.plan_id,start_date=start_on,
@@ -559,16 +590,16 @@ begin
 end $$;
 
 -- Tarifas iniciales del gimnasio. Los tickets quedan inactivos hasta configurar su precio real.
-insert into public.plans (id,name,duration_days,price,active,notes)
-select v.id::uuid,v.name,v.duration_days,v.price,v.active,v.notes
+insert into public.plans (id,name,plan_type,duration_days,ticket_quantity,price,active,notes)
+select v.id::uuid,v.name,v.plan_type,v.duration_days,v.ticket_quantity,v.price,v.active,v.notes
 from (values
-  ('10000000-0000-4000-8000-000000000001','Diario',1,4000::numeric,true,'Acceso por un día'),
-  ('10000000-0000-4000-8000-000000000002','Quincenal',15,30000::numeric,true,'Tarifa por 15 días'),
-  ('10000000-0000-4000-8000-000000000003','Mensual',30,60000::numeric,true,'Tarifa por 30 días'),
-  ('10000000-0000-4000-8000-000000000004','Ticket 5 días',5,0::numeric,false,'Definir precio y activar antes de vender'),
-  ('10000000-0000-4000-8000-000000000005','Ticket 10 días',10,0::numeric,false,'Definir precio y activar antes de vender'),
-  ('10000000-0000-4000-8000-000000000006','Ticket 15 días',15,0::numeric,false,'Definir precio y activar antes de vender')
-) as v(id,name,duration_days,price,active,notes)
+  ('10000000-0000-4000-8000-000000000001','Diario','normal',1,0,4000::numeric,true,'Acceso por un día'),
+  ('10000000-0000-4000-8000-000000000002','Quincenal','normal',15,0,30000::numeric,true,'Tarifa por 15 días'),
+  ('10000000-0000-4000-8000-000000000003','Mensual','normal',30,0,60000::numeric,true,'Tarifa por 30 días'),
+  ('10000000-0000-4000-8000-000000000004','Ticket 5 días','ticket',5,5,0::numeric,false,'Definir precio y activar antes de vender'),
+  ('10000000-0000-4000-8000-000000000005','Ticket 10 días','ticket',10,10,0::numeric,false,'Definir precio y activar antes de vender'),
+  ('10000000-0000-4000-8000-000000000006','Ticket 15 días','ticket',15,15,0::numeric,false,'Definir precio y activar antes de vender')
+) as v(id,name,plan_type,duration_days,ticket_quantity,price,active,notes)
 where not exists (select 1 from public.plans p where lower(p.name)=lower(v.name));
 
 -- RLS: el cliente nunca recibe privilegios administrativos por tener la publishable key.

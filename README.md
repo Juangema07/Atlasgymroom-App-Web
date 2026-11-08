@@ -67,7 +67,10 @@ Desde Configuración se puede exportar un archivo JSON de respaldo del almacenam
 
 - Crear usuario propietario y un usuario de caja; verificar que RLS limita las acciones del segundo.
 - Crear plan y miembro; registrar pago completo, parcial y pendiente.
+- Crear clientes con cédula obligatoria; buscar por cédula o nombre; registrar entrada solo con tarifa vigente.
+- Pausar una membresía vigente y reactivarla comprobando que la fecha final se compense por los días pausados.
 - Registrar entrada de socio y pase diario (sin crear miembro permanente).
+- Registrar pagos parciales, consultar Cuentas por Cobrar Pagos y cobrar saldos pendientes sin duplicar movimientos.
 - Vender dos productos; comprobar existencias y detalle de venta.
 - Registrar compra y verificar entrada de inventario.
 - Registrar gasto y comparar efectivo esperado.
@@ -77,3 +80,10 @@ Desde Configuración se puede exportar un archivo JSON de respaldo del almacenam
 - Comparar el sistema nuevo con el actual durante un periodo paralelo.
 
 La aplicación no debe considerarse producción hasta completar estas pruebas en el proyecto Supabase real.
+
+## 7. Detalles de Tarifas y módulos extendidos
+
+- La ficha de Tarifas guarda tipo (normal/ticket), días, cantidad de tiquetes, permiso para modificar precio, horarios, días disponibles y campos de información tributaria mostrados en el sistema actual.
+- Los horarios/días y los campos tributarios se almacenan como configuración de la tarifa; esta versión todavía no genera factura electrónica ni calcula/declarara impuestos DIAN.
+- El menú conserva los nombres de Administración, Pagos, Ventas, Clientes, Terceros, Egresos, Productos y Reservaciones. Los apartados de evoluciones, rutinas, ejercicios, documentos soporte, notas, reservas y configuraciones avanzadas están señalados como módulos pendientes, no como funciones listas.
+- Los tickets se dejan inactivos hasta que el dueño configure su precio real y los active; no se inventaron precios para esos tickets.
