@@ -12,7 +12,7 @@ on:
 
 permissions:
   contents: read
- njobs:
+jobs:
   android-apk:
     name: Android APK (debug / pruebas)
     runs-on: ubuntu-latest
