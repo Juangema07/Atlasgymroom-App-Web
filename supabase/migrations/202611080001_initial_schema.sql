@@ -5,11 +5,11 @@ create extension if not exists pgcrypto;
 
 do $$ begin
   create type public.app_role as enum ('owner', 'cashier');
-exception when duplicate_object then null; end $;
+exception when duplicate_object then null; end $$;
 
 create or replace function public.set_updated_at()
 returns trigger language plpgsql as $$
-begin new.updated_at = now(); return new; end $;
+begin new.updated_at = now(); return new; end $$;
 
 create table if not exists public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
@@ -267,7 +267,7 @@ begin
   values (new.id, coalesce(new.raw_user_meta_data->>'full_name', split_part(new.email,'@',1)), 'cashier')
   on conflict (id) do nothing;
   return new;
-end $;
+end $$;
 drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created after insert on auth.users
 for each row execute procedure public.handle_new_user();
@@ -283,7 +283,7 @@ begin
   insert into public.audit_logs(entity_table, entity_id, action, before_data, after_data, changed_by)
   values (TG_TABLE_NAME, row_id, TG_OP, old_json, new_json, auth.uid());
   if TG_OP = 'DELETE' then return OLD; else return NEW; end if;
-end $;
+end $$;
 
 drop policy if exists staff_insert_plans on public.plans;
 drop policy if exists owner_insert_plans on public.plans;
@@ -300,7 +300,7 @@ begin
     execute format('drop trigger if exists touch_%I on public.%I', t, t);
     execute format('create trigger touch_%I before update on public.%I for each row execute procedure public.set_updated_at()', t, t);
   end loop;
-end $;
+end $$;
 
 -- Operaciones transaccionales: IDs UUID idempotentes para evitar duplicados al reconectar.
 create or replace function public.create_product(p_product jsonb)
@@ -322,7 +322,7 @@ begin
       'adjustment',initial_stock,'Existencias iniciales',auth.uid());
   end if;
   return pid;
-end $;
+end $$;
 
 create or replace function public.record_membership_payment(p_payment jsonb)
 returns uuid language plpgsql security definer set search_path = public
@@ -357,7 +357,7 @@ begin
       end_date=start_on + plan_days - 1, status='active', paused_at=null, updated_at=now() where id=mid;
   end if;
   return pid;
-end $;
+end $$;
 
 -- Cobro de saldo pendiente: registra abonos adicionales con un ID estable e idempotente.
 create or replace function public.collect_payment_balance(
@@ -463,7 +463,7 @@ begin
       'income',paid,method_name,'Venta de productos',sid,auth.uid());
   end if;
   return sid;
-end $;
+end $$;
 
 -- Registro seguro de asistencia: valida vigencia en el servidor y evita doble entrada diaria.
 create or replace function public.register_attendance(p_attendance jsonb)
@@ -512,7 +512,7 @@ begin
     values(coalesce(nullif(p_day_pass->>'cash_movement_id','')::uuid,gen_random_uuid()),(select id from public.cash_sessions where status='open' limit 1),'income',amt,method_name,'Pase diario',did,auth.uid());
   end if;
   return did;
-end $;
+end $$;
 
 create or replace function public.record_expense(p_expense jsonb)
 returns uuid language plpgsql security definer set search_path = public
@@ -528,7 +528,7 @@ begin
   insert into public.cash_movements(id,cash_session_id,direction,amount,method,description,reference_id,created_by)
   values(coalesce(nullif(p_expense->>'cash_movement_id','')::uuid,gen_random_uuid()),(select id from public.cash_sessions where status='open' limit 1),'expense',amt,method_name,p_expense->>'description',eid,auth.uid());
   return eid;
-end $;
+end $$;
 
 create or replace function public.receive_purchase(p_purchase jsonb, p_items jsonb)
 returns uuid language plpgsql security definer set search_path = public
@@ -587,7 +587,7 @@ begin
       'expense',paid,coalesce(p_purchase->>'method','cash'),'Compra de inventario',purid,auth.uid());
   end if;
   return purid;
-end $;
+end $$;
 
 create or replace function public.open_cash_session(p_session jsonb)
 returns uuid language plpgsql security definer set search_path = public
@@ -600,7 +600,7 @@ begin
   insert into public.cash_sessions(id,opened_by,initial_cash,notes,status)
   values(sid,auth.uid(),cash,p_session->>'notes','open');
   return sid;
-end $;
+end $$;
 
 create or replace function public.close_cash_session(p_session_id uuid, p_counted_cash numeric)
 returns jsonb language plpgsql security definer set search_path = public
@@ -621,7 +621,7 @@ begin
   update public.cash_sessions set expected_cash=expected,counted_cash=p_counted_cash,difference=diff,
     status='closed',closed_at=now(),updated_at=now() where id=p_session_id;
   return jsonb_build_object('expected_cash',expected,'counted_cash',p_counted_cash,'difference',diff);
-end $;
+end $$;
 
 -- Tarifas iniciales del gimnasio. Los tickets quedan inactivos hasta configurar su precio real.
 insert into public.plans (id,name,plan_type,duration_days,ticket_quantity,price,active,notes)
@@ -669,7 +669,7 @@ begin
     execute format('create policy staff_read_%I on public.%I for select to authenticated using (public.is_staff())',t,t);
     execute format('drop policy if exists staff_insert_%I on public.%I',t,t);
   end loop;
-end $;
+end $$;
 
 -- Escrituras directas limitadas a fichas básicas. Los movimientos económicos y el stock
 -- solo se crean mediante funciones transaccionales SECURITY DEFINER.
