@@ -6,7 +6,7 @@ import {
   Check, CircleDollarSign, ClipboardList, Cloud, CloudOff,
   Download, Dumbbell, FileDown, FileUp, Home, LogOut, Menu,
   Package, Plus, RefreshCw, Search, Settings, Shield, ShoppingBag, Users,
-  Wallet, X, Pencil, Receipt, AlertTriangle, UserRound, Boxes, LockKeyhole, Pause, Play,
+  Wallet, X, Pencil, Receipt, AlertTriangle, UserRound, LockKeyhole, Pause, Play,
 } from 'lucide-react'
 import { supabase, supabaseConfigured } from './lib/supabase'
 import {
