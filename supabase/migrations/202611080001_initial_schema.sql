@@ -371,9 +371,9 @@ begin
   for item in select * from jsonb_array_elements(p_items) loop
     pid := (item->>'product_id')::uuid;
     qty := coalesce((item->>'quantity')::integer,0);
-    select stock, price into stock_now, price from public.products where id=pid for update;
+    select p.stock, p.price into stock_now, price from public.products p where p.id=pid for update;
     if stock_now < qty then raise exception 'Existencia insuficiente para uno de los productos'; end if;
-    update public.products set stock=stock-qty,updated_at=now() where id=pid;
+    update public.products as prod set stock=prod.stock-qty,updated_at=now() where prod.id=pid;
     insert into public.sale_items(id,sale_id,product_id,quantity,unit_price,line_total)
     values(coalesce(nullif(item->>'id','')::uuid,gen_random_uuid()),sid,pid,qty,price,qty*price);
     insert into public.stock_movements(id,product_id,movement_type,quantity,reference_id,created_by)
@@ -432,7 +432,7 @@ declare
   item jsonb;
   pid uuid;
   qty integer;
-  cost numeric;
+  line_cost numeric;
   calculated_total numeric := 0;
   paid numeric := coalesce((p_purchase->>'amount_paid')::numeric,0);
 begin
@@ -445,12 +445,12 @@ begin
   for item in select * from jsonb_array_elements(p_items) loop
     pid := (item->>'product_id')::uuid;
     qty := coalesce((item->>'quantity')::integer,0);
-    cost := coalesce((item->>'unit_cost')::numeric,-1);
-    if qty <= 0 or cost < 0 then raise exception 'Cantidad o costo de compra inválido'; end if;
+    line_cost := coalesce((item->>'unit_cost')::numeric,-1);
+    if qty <= 0 or line_cost < 0 then raise exception 'Cantidad o costo de compra inválido'; end if;
     if not exists(select 1 from public.products where id=pid) then
       raise exception 'Producto de compra no encontrado';
     end if;
-    calculated_total := calculated_total + (qty * cost);
+    calculated_total := calculated_total + (qty * line_cost);
   end loop;
 
   if round(coalesce((p_purchase->>'total_amount')::numeric,0),2) <> round(calculated_total,2) then
@@ -465,11 +465,11 @@ begin
   for item in select * from jsonb_array_elements(p_items) loop
     pid := (item->>'product_id')::uuid;
     qty := coalesce((item->>'quantity')::integer,0);
-    cost := (item->>'unit_cost')::numeric;
-    update public.products set stock=stock+qty,cost=cost,updated_at=now() where id=pid;
+    line_cost := (item->>'unit_cost')::numeric;
+    update public.products as prod set stock=prod.stock+qty,cost=line_cost,updated_at=now() where prod.id=pid;
     if not found then raise exception 'Producto de compra no encontrado'; end if;
     insert into public.purchase_items(id,purchase_id,product_id,quantity,unit_cost)
-    values(coalesce(nullif(item->>'id','')::uuid,gen_random_uuid()),purid,pid,qty,cost);
+    values(coalesce(nullif(item->>'id','')::uuid,gen_random_uuid()),purid,pid,qty,line_cost);
     insert into public.stock_movements(id,product_id,movement_type,quantity,reference_id,created_by)
     values(coalesce(nullif(item->>'stock_movement_id','')::uuid,gen_random_uuid()),pid,'purchase',qty,purid,auth.uid());
   end loop;
