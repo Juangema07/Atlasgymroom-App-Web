@@ -359,7 +359,7 @@ end $$;
 create or replace function public.collect_payment_balance(
   p_payment_id uuid, p_amount numeric, p_method text, p_cash_movement_id uuid
 ) returns jsonb language plpgsql security definer set search_path = public
-as $
+as $$
 declare pay public.payments%rowtype; due numeric; next_paid numeric; plan_days integer; start_on date;
 begin
   if not public.is_staff() then raise exception 'No autorizado'; end if;
@@ -570,7 +570,7 @@ end $$;
 
 create or replace function public.close_cash_session(p_session_id uuid, p_counted_cash numeric)
 returns jsonb language plpgsql security definer set search_path = public
-as $
+as $$
 declare sess public.cash_sessions%rowtype; expected numeric; diff numeric;
 begin
   if not public.is_staff() then raise exception 'No autorizado'; end if;
