@@ -508,6 +508,25 @@ export default function App() {
     try { await importLocalBackup(await file.text()); await refresh(); notify('Respaldo importado en este dispositivo.') }
     catch (error) { notify(error instanceof Error ? error.message : 'No se pudo importar el respaldo.') }
   }
+  async function resetTestData() {
+    const confirmation = window.prompt('Vas a borrar clientes, pagos, asistencias, ventas, productos, inventario, compras, gastos, caja y registros auxiliares. Se conservarán usuarios y tarifas. Escribe REINICIAR para continuar.')
+    if (confirmation !== 'REINICIAR') { notify('Reinicio cancelado.'); return }
+    setBusy(true)
+    try {
+      if (supabaseConfigured) {
+        if (!supabase || !session || !navigator.onLine) throw new Error('Conéctate e inicia sesión como propietario para reiniciar los datos remotos.')
+        const { error } = await supabase.rpc('reset_test_data')
+        if (error) throw error
+      } else {
+        await resetLocalTestData()
+        const currentPlans = await listRows('plans')
+        for (const plan of defaultTariffs) if (!currentPlans.some(row => row.name.toLowerCase() === plan.name.toLowerCase())) await saveRow('plans', { ...plan, created_by: null, created_at: nowIso(), updated_at: nowIso() })
+      }
+      await refresh(); setSaleLines([]); setPurchaseLines([])
+      notify('Datos de prueba reiniciados. Se conservaron tarifas y usuarios.')
+    } catch (error) { notify(error instanceof Error ? error.message : 'No se pudieron reiniciar los registros.') }
+    finally { setBusy(false) }
+  }
 
   const handleSection = (label: Section) => { setSection(label); setMenuOpen(false); setSearch(''); setToast('') }
   const openCreate = () => {
@@ -545,6 +564,16 @@ export default function App() {
     {menuOpen && <button className="scrim" aria-label="Cerrar menú" onClick={() => setMenuOpen(false)}/>}
     <main className="main-content">
       <header className="topbar"><div className="topbar-left"><button className="menu-toggle" onClick={() => setMenuOpen(true)}><Menu/></button><div className="breadcrumb">Atlasgymroom <span>/</span> <strong>{section}</strong></div></div><div className="topbar-actions"><div className={`status-pill ${supabaseConfigured ? 'connected' : 'local'}`}>{supabaseConfigured ? <><Cloud size={13}/> Supabase</> : <><CloudOff size={13}/> Solo este dispositivo</>}</div><button className="sync-button" onClick={() => void sync()} title="Sincronizar"><RefreshCw size={15}/><span>{syncCount ? `${syncCount} pendientes` : 'Sin pendientes'}</span></button><div className="avatar owner">{userLabel.slice(0,2).toUpperCase()}</div></div></header>
+      <section className="command-dock" aria-label="Accesos rápidos">
+        <div className="command-dock-title"><Zap size={17}/><span>OPERACIÓN INMEDIATA</span><small>Acciones de un toque</small></div>
+        <button className="command-tile entry-tile" onClick={() => openSpecial('daypass')}><span><Zap size={19}/></span><strong>Cobrar entrada</strong><small>$4.000 · sin cliente</small></button>
+        <button className="command-tile" onClick={() => openSpecial('payment')}><span><CircleDollarSign size={19}/></span><strong>Pago mensualidad</strong><small>Renovar tarifa</small></button>
+        <button className="command-tile" onClick={() => openSpecial('sale')}><span><ShoppingCart size={19}/></span><strong>Nueva venta</strong><small>Catálogo visual</small></button>
+        <button className="command-tile" onClick={() => { setSection('Miembros');setEditing(null);setProductImageFile(null);setForm({full_name:'',document:'',phone:'',email:'',birth_date:'',current_plan_id:'',start_date:'',end_date:'',status:'active',notes:''});setDialog('record') }}><span><UserRound size={19}/></span><strong>Nuevo cliente</strong><small>Crear ficha</small></button>
+        <button className="command-tile" onClick={() => { setSection('Productos');setEditing(null);setProductImageFile(null);setProductImagePreview('');setForm({name:'',category:'',sku:'',description:'',cost:'0',price:'',stock:'0',min_stock:'0'});setDialog('record') }}><span><ImagePlus size={19}/></span><strong>Añadir producto</strong><small>Imagen y categoría</small></button>
+        <button className="command-tile" onClick={() => { setSection('Caja');openSpecial('cash') }}><span><Wallet size={19}/></span><strong>Control de caja</strong><small>Abrir / cerrar</small></button>
+        <button className="command-tile" onClick={() => handleSection('Informes')}><span><BarChart3 size={19}/></span><strong>Ver informes</strong><small>Gráficas y totales</small></button>
+      </section>
       <section className="front-desk-bar">
         <div className="desk-search"><label><Activity size={15}/> Registrar asistencia</label><input value={attendanceLookup} onChange={e=>setAttendanceLookup(e.target.value)} placeholder="Cédula o nombre del cliente…"/>{attendanceLookup.trim() && <div className="lookup-results">{members.filter(m=>String(m.document||'').toLowerCase().includes(attendanceLookup.toLowerCase())||String(m.full_name||'').toLowerCase().includes(attendanceLookup.toLowerCase())).slice(0,6).map(m=><button key={m.id} disabled={busy} onClick={()=>void registerMemberEntry(m)}><span><strong>{m.full_name}</strong><small>C.C. {m.document} · {m.end_date && m.end_date >= today() && m.status==='active'?'Tarifa vigente':'Revisar tarifa'}</small></span><b>Registrar entrada</b></button>)}{!members.some(m=>String(m.document||'').toLowerCase().includes(attendanceLookup.toLowerCase())||String(m.full_name||'').toLowerCase().includes(attendanceLookup.toLowerCase()))&&<p>No encontramos ese cliente. Regístralo desde Clientes.</p>}</div>}</div>
         <div className="desk-search"><label><Users size={15}/> Buscar / gestionar cliente</label><input value={memberLookup} onChange={e=>setMemberLookup(e.target.value)} placeholder="Cédula o nombre para abrir su ficha…"/>{memberLookup.trim() && <div className="lookup-results">{members.filter(m=>String(m.document||'').toLowerCase().includes(memberLookup.toLowerCase())||String(m.full_name||'').toLowerCase().includes(memberLookup.toLowerCase())).slice(0,6).map(m=><div className="lookup-member-row" key={m.id}><span><strong>{m.full_name}</strong><small>C.C. {m.document} · {m.paused_at?'Pausado':m.end_date && m.end_date < today()?'Vencido':'Activo'}</small></span><div><button onClick={()=>{setSection('Miembros');setMemberLookup('');setSearch('');setEditing(m);const initial:Record<string,string>={};configFor('Miembros',rows)?.fields.forEach(f=>initial[f.key]=m[f.key]==null?'':String(m[f.key]));setForm(initial);setDialog('record')}}>Abrir ficha</button><button onClick={()=>{setMemberLookup('');openMemberPayment(m)}}>Pago</button><button onClick={()=>{setMemberLookup('');void toggleMemberPause(m)}}>{m.paused_at?'Reactivar':'Pausar'}</button></div></div>)}</div>}</div>
@@ -556,7 +585,7 @@ export default function App() {
         {section === 'Inicio' && <Dashboard activeMembers={activeMembers} expiredMembers={expiredMembers} total={members.length} todayIncome={todayIncome} todayAttendances={(rows.attendance || []).filter(a => dateInBogota(a.entered_at) === today()).length} expiring={members.filter(m => m.end_date && m.end_date >= today() && m.end_date <= datePlusDays(today(), 7)).length} stockLow={stockLow} rows={rows} onNavigate={handleSection} />}
         {section === 'Caja' && <CashPage session={activeSession} sessions={rows.cash_sessions || []} movements={rows.cash_movements || []} onOpen={() => openSpecial('cash')} onClose={() => openSpecial('cash')} />}
         {section === 'Informes' && <Reports rows={rows} />}
-        {section === 'Configuración' && <SettingsPage onBackup={backup} onRestore={() => fileRef.current?.click()} />}
+        {section === 'Configuración' && <SettingsPage onBackup={backup} onRestore={() => fileRef.current?.click()} onReset={resetTestData} busy={busy} />}
         {section === 'Productos' && <ProductCatalog products={filteredRows} onCreate={openCreate} onEdit={openRecord}/>}
         {moduleConfig && section !== 'Productos' && <DataModule config={moduleConfig} rows={filteredRows} isOwner={Boolean(isOwner)} search={search} setSearch={setSearch} onCreate={openCreate} onEdit={openRecord} onTogglePause={toggleMemberPause} onMemberPayment={openMemberPayment} onCollectBalance={payment => { setEditing(payment); setForm({ amount_paid: String(Math.max(0, Number(payment.amount || 0) - Number(payment.amount_paid || 0))), method: 'cash' }); setDialog('balance') }} memberName={memberName} productName={productName} planName={planName} />}
         {!moduleConfig && section !== 'Inicio' && section !== 'Caja' && section !== 'Informes' && section !== 'Configuración' && <PlaceholderModule title={section} />}
@@ -646,48 +675,47 @@ function Login({ onSignIn, busy, toast }: { onSignIn: (email: string, password: 
 }
 
 function Dashboard(props: { activeMembers: number; expiredMembers: number; total: number; todayIncome: number; todayAttendances: number; expiring: number; stockLow: Row[]; rows: Record<string,Row[]>; onNavigate:(s:Section)=>void }) {
-  const recent = [...(props.rows.payments || []), ...(props.rows.sales || []), ...(props.rows.day_passes || [])].sort((a,b) => String(b.created_at || b.sold_at || b.visited_at).localeCompare(String(a.created_at || a.sold_at || a.visited_at))).slice(0,5)
-  const day = today()
-  const weekStart = datePlusDays(day, -6)
-  const monthStart = day.slice(0,7) + '-01'
-  const payments = props.rows.payments || []
-  const sales = props.rows.sales || []
-  const creditBalance = payments.filter(p => p.status !== 'voided').reduce((sum,p) => sum + Math.max(0,Number(p.amount || 0)-Number(p.amount_paid || 0)),0)
-  const newClientsWeek = (props.rows.members || []).filter(m => dateInBogota(m.created_at) >= weekStart && dateInBogota(m.created_at) <= day).length
-  const birthdayCount = (props.rows.members || []).filter(m => String(m.birth_date || '').slice(5) === day.slice(5)).length
-  const totalFor = (items: Row[], start: string, dateField: string, amountField: string) => items.filter(item => dateInBogota(item[dateField] || item.created_at) >= start && dateInBogota(item[dateField] || item.created_at) <= day).reduce((sum,item) => sum + Number(item[amountField] || 0),0)
-  const paymentToday = totalFor(payments, day, 'paid_at', 'amount_paid')
-  const paymentWeek = totalFor(payments, weekStart, 'paid_at', 'amount_paid')
-  const paymentMonth = totalFor(payments, monthStart, 'paid_at', 'amount_paid')
-  const salesToday = totalFor(sales, day, 'sold_at', 'amount_paid')
-  const salesWeek = totalFor(sales, weekStart, 'sold_at', 'amount_paid')
-  const salesMonth = totalFor(sales, monthStart, 'sold_at', 'amount_paid')
-  return <><div className="welcome-row"><div><div className="eyebrow">{new Date().toLocaleDateString('es-CO',{timeZone:'America/Bogota',weekday:'long',day:'numeric',month:'long',year:'numeric'}).toUpperCase()}</div><h1>¡Vamos con toda! <span>💪</span></h1><p className="subheading">Resumen operativo de Atlasgymroom.</p></div><div className="date-button"><CalendarDays size={16}/> Hoy</div></div>
-    <div className="stats-grid"><Stat icon={<Users/>} label="Total de clientes" value={String(props.total)} change={`${props.activeMembers} activos`} tint="green"/><Stat icon={<Activity/>} label="Asistencias de hoy" value={String(props.todayAttendances)} change="Entradas registradas" tint="blue"/><Stat icon={<CircleDollarSign/>} label="Dinero recibido hoy" value={formatMoney(props.todayIncome)} change="Pagos, ventas y pases" tint="yellow"/><Stat icon={<CalendarDays/>} label="Pagos próximos a vencer" value={String(props.expiring)} change={`${props.expiredMembers} vencidos`} tint="purple"/></div>
-    <div className="content-grid"><section className="panel"><div className="panel-heading"><div><h2>Movimientos recientes</h2><p>Pagos, ventas y pases diarios</p></div><button className="text-button" onClick={() => props.onNavigate('Informes')}>Ver informes <ArrowUpRight size={15}/></button></div>
-      {recent.length ? <div className="activity-list">{recent.map((r,i) => <div className="activity-row" key={r.id}><div className={`avatar ${i%2?'blue':'lime'}`}>{String(r.id).slice(0,2).toUpperCase()}</div><div className="activity-person"><strong>{r.visitor_name || r.notes || (r.member_id ? 'Pago de socio' : r.total != null ? 'Venta de productos' : 'Movimiento')}</strong><small>{r.status || r.method || 'Registrado'}</small></div><div className="activity-time">{formatDate(r.created_at || r.sold_at || r.visited_at)}</div><strong className="activity-amount">{formatMoney(r.amount_paid ?? r.amount ?? r.total)}</strong></div>)}</div> : <Empty text="Aún no hay movimientos. Registra el primer socio, pago o venta."/>}</section>
-      <section className="panel"><div className="panel-heading"><div><h2>Accesos rápidos</h2><p>Operaciones frecuentes</p></div></div><div className="quick-grid"><Quick icon={<UserRound/>} label="Nuevo cliente" onClick={() => props.onNavigate('Miembros')}/><Quick icon={<Activity/>} label="Registrar entrada" onClick={() => props.onNavigate('Asistencia')}/><Quick icon={<CircleDollarSign/>} label="Registrar pago" onClick={() => props.onNavigate('Pagos')}/><Quick icon={<ShoppingBag/>} label="Nueva venta" onClick={() => props.onNavigate('Ventas')}/></div></section></div>
-    <div className="content-grid dashboard-detail-grid">
-      <section className="panel"><div className="panel-heading"><div><h2>Clientes y cartera</h2><p>Indicadores para la atención diaria</p></div></div>
-        <div className="report-line"><span>Clientes nuevos última semana</span><strong>{newClientsWeek}</strong></div>
-        <div className="report-line"><span>Clientes activos</span><strong>{props.activeMembers}</strong></div>
-        <div className="report-line"><span>Pagos próximos a vencer</span><strong>{props.expiring}</strong></div>
-        <div className="report-line"><span>Pagos a crédito</span><strong>{formatMoney(creditBalance)}</strong></div>
-        <div className="report-line"><span>Cumpleaños de clientes hoy</span><strong>{birthdayCount}</strong></div>
-        <div className="report-line"><span>Productos con stock bajo</span><strong>{props.stockLow.length}</strong></div>
-      </section>
-      <section className="panel"><div className="panel-heading"><div><h2>Ingresos pagos</h2><p>Dinero recibido por mensualidades y tarifas</p></div></div>
-        <div className="report-line"><span>Hoy</span><strong>{formatMoney(paymentToday)}</strong></div>
-        <div className="report-line"><span>Semana</span><strong>{formatMoney(paymentWeek)}</strong></div>
-        <div className="report-line"><span>Mes</span><strong>{formatMoney(paymentMonth)}</strong></div>
-        <div className="panel-heading dashboard-sales-heading"><div><h2>Ingresos ventas</h2><p>Dinero recibido por productos</p></div></div>
-        <div className="report-line"><span>Hoy</span><strong>{formatMoney(salesToday)}</strong></div>
-        <div className="report-line"><span>Semana</span><strong>{formatMoney(salesWeek)}</strong></div>
-        <div className="report-line"><span>Mes</span><strong>{formatMoney(salesMonth)}</strong></div>
-      </section>
+  const day=today(),weekStart=datePlusDays(day,-6),monthStart=day.slice(0,7)+'-01'
+  const payments=props.rows.payments||[],sales=props.rows.sales||[],passes=props.rows.day_passes||[],products=props.rows.products||[]
+  const recent=[...payments,...sales,...passes].sort((a,b)=>String(b.created_at||b.sold_at||b.visited_at).localeCompare(String(a.created_at||a.sold_at||a.visited_at))).slice(0,6)
+  const creditBalance=payments.filter(p=>p.status!=='voided').reduce((sum,p)=>sum+Math.max(0,Number(p.amount||0)-Number(p.amount_paid||0)),0)
+  const newClients=(props.rows.members||[]).filter(m=>dateInBogota(m.created_at)>=weekStart&&dateInBogota(m.created_at)<=day).length
+  const birthdays=(props.rows.members||[]).filter(m=>String(m.birth_date||'').slice(5)===day.slice(5))
+  const totalFor=(items:Row[],start:string,dateField:string,amountField:string)=>items.filter(x=>dateInBogota(x[dateField]||x.created_at)>=start&&dateInBogota(x[dateField]||x.created_at)<=day).reduce((sum,x)=>sum+Number(x[amountField]||0),0)
+  const paymentToday=totalFor(payments,day,'paid_at','amount_paid'),paymentWeek=totalFor(payments,weekStart,'paid_at','amount_paid'),paymentMonth=totalFor(payments,monthStart,'paid_at','amount_paid')
+  const salesToday=totalFor(sales,day,'sold_at','amount_paid'),salesWeek=totalFor(sales,weekStart,'sold_at','amount_paid'),salesMonth=totalFor(sales,monthStart,'sold_at','amount_paid')
+  const trend=Array.from({length:7},(_,i)=>{const date=datePlusDays(day,i-6);const p=payments.filter(x=>dateInBogota(x.paid_at||x.created_at)===date).reduce((n,x)=>n+Number(x.amount_paid||0),0);const v=sales.filter(x=>dateInBogota(x.sold_at||x.created_at)===date).reduce((n,x)=>n+Number(x.amount_paid||0),0);const d=passes.filter(x=>dateInBogota(x.visited_at||x.created_at)===date).reduce((n,x)=>n+Number(x.amount||0),0);return {label:new Date(date+'T12:00:00-05:00').toLocaleDateString('es-CO',{weekday:'short'}),value:p+v+d}})
+  const categorySales=new Map<string,number>()
+  for(const item of props.rows.sale_items||[]){const product=products.find(p=>p.id===item.product_id);const key=String(product?.category||'Otros');categorySales.set(key,(categorySales.get(key)||0)+Number(item.line_total||Number(item.unit_price||0)*Number(item.quantity||0)))}
+  const categoryData=Array.from(categorySales.entries()).map(([label,value])=>({label,value})).sort((a,b)=>b.value-a.value).slice(0,5)
+  const todayLabel=new Date().toLocaleDateString('es-CO',{timeZone:'America/Bogota',weekday:'long',day:'numeric',month:'long',year:'numeric'})
+  return <div className="command-center">
+    <div className="control-room-heading"><div><div className="eyebrow">CENTRO DE MANDO · ATLASGYMROOM</div><h1>Panel de operaciones</h1><p>{todayLabel} · Estado general del gimnasio</p></div><div className="control-room-status"><span className="live-dot"/> Operación del día</div></div>
+    <div className="overview-metrics">
+      <div className="overview-card metric-primary"><div className="metric-top"><span>INGRESOS HOY</span><CircleDollarSign size={18}/></div><strong>{formatMoney(props.todayIncome)}</strong><small>Pagos + ventas + entradas</small><div className="metric-spark"><span style={{width:Math.max(8,Math.min(100,props.todayIncome/Math.max(1,...trend.map(x=>x.value))*100))+'%'}}/></div></div>
+      <div className="overview-card"><div className="metric-top"><span>CLIENTES ACTIVOS</span><Users size={18}/></div><strong>{props.activeMembers}</strong><small>{props.total} registrados en total</small><button onClick={()=>props.onNavigate('Miembros')}>Abrir clientes <ArrowUpRight size={13}/></button></div>
+      <div className="overview-card"><div className="metric-top"><span>ENTRADAS HOY</span><Activity size={18}/></div><strong>{props.todayAttendances}</strong><small>Asistencias registradas</small><button onClick={()=>props.onNavigate('Asistencia')}>Ver asistencia <ArrowUpRight size={13}/></button></div>
+      <div className="overview-card"><div className="metric-top"><span>POR VENCER</span><CalendarDays size={18}/></div><strong>{props.expiring}</strong><small>{props.expiredMembers} membresías vencidas</small><button onClick={()=>props.onNavigate('Congelar Pagos')}>Revisar cartera <ArrowUpRight size={13}/></button></div>
     </div>
-    <section className="panel bottom-panel"><div className="panel-heading"><div><h2>Alertas de operación</h2><p>Elementos que necesitan revisión</p></div></div><div className="alerts-grid"><div><strong>{props.expiredMembers}</strong><span>Clientes vencidos</span></div><div><strong>{props.stockLow.length}</strong><span>Productos con stock bajo</span></div><div><strong>{props.expiring}</strong><span>Vencimientos próximos</span></div></div>{props.stockLow.length>0 && <div className="low-stock-list">{props.stockLow.slice(0,4).map(p=><span key={p.id}>{p.name} · {p.stock} unidades</span>)}</div>}</section>
-  </>
+    <div className="analytics-grid">
+      <section className="analytics-panel revenue-panel"><div className="analytics-heading"><div><span className="eyebrow">RENDIMIENTO</span><h2>Ingresos de los últimos 7 días</h2><p>Dinero efectivamente recibido por fecha</p></div><span className="chart-period">7 DÍAS</span></div><TrendChart data={trend}/><div className="chart-legend"><span><i className="legend-payments"/>Pagos, ventas y entradas</span></div></section>
+      <section className="analytics-panel category-panel"><div className="analytics-heading"><div><span className="eyebrow">PRODUCTOS</span><h2>Ventas por categoría</h2><p>Valor acumulado de los artículos vendidos</p></div><Tag size={18}/></div>{categoryData.length?<CategoryBars data={categoryData}/>:<div className="chart-empty"><ShoppingBag size={26}/><span>Las ventas por categoría aparecerán aquí.</span></div>}</section>
+    </div>
+    <div className="command-lower-grid">
+      <section className="analytics-panel action-panel"><div className="analytics-heading"><div><span className="eyebrow">ACCESO INMEDIATO</span><h2>Acciones frecuentes</h2></div></div><div className="quick-grid"><Quick icon={<Zap/>} label="Cobrar entrada" onClick={()=>props.onNavigate('Pase diario')}/><Quick icon={<CircleDollarSign/>} label="Registrar pago" onClick={()=>props.onNavigate('Pagos')}/><Quick icon={<ShoppingCart/>} label="Nueva venta" onClick={()=>props.onNavigate('Ventas')}/><Quick icon={<UserRound/>} label="Nuevo cliente" onClick={()=>props.onNavigate('Miembros')}/><Quick icon={<Package/>} label="Productos" onClick={()=>props.onNavigate('Productos')}/><Quick icon={<Wallet/>} label="Caja" onClick={()=>props.onNavigate('Caja')}/></div></section>
+      <section className="analytics-panel operations-panel"><div className="analytics-heading"><div><span className="eyebrow">TAREAS DEL DÍA</span><h2>Estado operativo</h2></div></div><div className="operation-line"><span><i className="state-dot warn"/>Membresías por vencer</span><b>{props.expiring}</b></div><div className="operation-line"><span><i className="state-dot danger"/>Clientes vencidos</span><b>{props.expiredMembers}</b></div><div className="operation-line"><span><i className="state-dot warn"/>Productos con stock bajo</span><b>{props.stockLow.length}</b></div><div className="operation-line"><span><i className="state-dot good"/>Nuevos clientes esta semana</span><b>{newClients}</b></div><div className="operation-line"><span><i className="state-dot"/>Saldos pendientes de pagos</span><b>{formatMoney(creditBalance)}</b></div><div className="operation-line"><span><i className="state-dot good"/>Cumpleaños de hoy</span><b>{birthdays.length}</b></div>{birthdays.length>0&&<small className="birthday-names">{birthdays.slice(0,3).map(x=>x.full_name).join(' · ')}</small>}</section>
+    </div>
+    <section className="analytics-panel recent-panel"><div className="analytics-heading"><div><span className="eyebrow">MOVIMIENTOS</span><h2>Actividad reciente</h2></div><button className="text-button" onClick={()=>props.onNavigate('Informes')}>Ver informes <ArrowUpRight size={15}/></button></div>{recent.length?<div className="activity-list">{recent.map((r,i)=><div className="activity-row" key={r.id}><div className={`avatar ${i%2?'blue':'lime'}`}>{r.total!=null?<ShoppingBag size={16}/>:r.visitor_name?<Zap size={16}/>:<CircleDollarSign size={16}/>}</div><div className="activity-person"><strong>{r.visitor_name||r.notes||(r.member_id?'Pago de cliente':r.total!=null?'Venta de productos':'Entrada diaria')}</strong><small>{r.status||r.method||'Registrado'}</small></div><div className="activity-time">{formatDate(r.created_at||r.sold_at||r.visited_at)}</div><strong className="activity-amount">{formatMoney(r.amount_paid??r.amount??r.total)}</strong></div>)}</div>:<Empty text="Todavía no hay movimientos. Usa los accesos rápidos para iniciar las pruebas."/>}</section>
+    <div className="finance-periods"><div><span>INGRESOS POR PAGOS · HOY</span><b>{formatMoney(paymentToday)}</b></div><div><span>INGRESOS POR PAGOS · SEMANA</span><b>{formatMoney(paymentWeek)}</b></div><div><span>INGRESOS POR PAGOS · MES</span><b>{formatMoney(paymentMonth)}</b></div><div><span>VENTAS · HOY / SEMANA / MES</span><b>{formatMoney(salesToday)} / {formatMoney(salesWeek)} / {formatMoney(salesMonth)}</b></div></div>
+  </div>
+}
+function TrendChart({data}:{data:{label:string;value:number}[]}) {
+ const max=Math.max(1,...data.map(x=>x.value));const points=data.map((item,i)=>`${32+i*(536/Math.max(1,data.length-1))},${144-(item.value/max)*112}`).join(' ')
+ return <div className="trend-chart"><svg viewBox="0 0 600 180" role="img" aria-label="Gráfica de ingresos de los últimos siete días"><defs><linearGradient id="trendFill" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor="#d9f29d" stopOpacity=".38"/><stop offset="100%" stopColor="#d9f29d" stopOpacity="0"/></linearGradient></defs><path d={`M ${points.replace(/ /g,' L ')} L 568 154 L 32 154 Z`} fill="url(#trendFill)"/><polyline points={points} fill="none" stroke="#b7e86e" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"/>{data.map((item,i)=>{const x=32+i*(536/Math.max(1,data.length-1)),y=144-(item.value/max)*112;return <g key={item.label+i}><circle cx={x} cy={y} r="5" fill="#e4f6c4" stroke="#6d933d" strokeWidth="2"/><text x={x} y="174" textAnchor="middle" fill="#8d9a91" fontSize="10">{item.label}</text></g>})}</svg><div className="trend-max">{formatMoney(max)}</div></div>
+}
+function CategoryBars({data}:{data:{label:string;value:number}[]}) {
+ const max=Math.max(1,...data.map(x=>x.value))
+ return <div className="category-bars">{data.map(item=><div className="category-bar-row" key={item.label}><div><span>{item.label}</span><b>{formatMoney(item.value)}</b></div><div className="category-bar-track"><i style={{width:Math.max(3,item.value/max*100)+'%'}}/></div></div>)}</div>
 }
 
 function PlaceholderModule({ title }: { title: Section }) {
@@ -773,8 +801,8 @@ function Reports({ rows }: { rows:Record<string,Row[]> }) {
   </>
 }
 
-function SettingsPage({ onBackup, onRestore }: { onBackup:()=>void; onRestore:()=>void }) {
-  return <><div className="module-heading"><div><div className="eyebrow">SISTEMA</div><h1>Configuración</h1><p>Conexión, respaldos y continuidad operativa.</p></div></div><div className="content-grid"><section className="panel setting-card"><div className="setting-icon"><FileDown/></div><h2>Respaldo local</h2><p>Descarga un archivo JSON con los datos guardados en este navegador. El respaldo puede contener información personal; protégelo.</p><button className="primary-button" onClick={onBackup}><Download size={16}/> Exportar respaldo</button></section><section className="panel setting-card"><div className="setting-icon"><FileUp/></div><h2>Restaurar respaldo</h2><p>Importa un respaldo previamente exportado en el dispositivo actual. Los registros se agregan o actualizan; no se eliminan datos existentes.</p><button className="secondary-button" onClick={onRestore}><FileUp size={16}/> Seleccionar archivo</button></section></div><section className="panel security-panel"><Shield/><div><h2>Seguridad y acceso</h2><p>Con Supabase, los usuarios se autentican individualmente y la base de datos aplica permisos RLS. Los roles se administran desde el perfil del usuario. No compartas contraseñas ni claves secretas.</p></div></section></>
+function SettingsPage({ onBackup, onRestore, onReset, busy }: { onBackup:()=>void; onRestore:()=>void; onReset:()=>void; busy:boolean }) {
+  return <><div className="module-heading"><div><div className="eyebrow">SISTEMA</div><h1>Configuración</h1><p>Respaldo, continuidad y limpieza del entorno de pruebas.</p></div></div><div className="content-grid"><section className="panel setting-card"><div className="setting-icon"><FileDown/></div><h2>Respaldo local</h2><p>Descarga un archivo JSON con los datos guardados en este navegador. El respaldo puede contener información personal; protégelo.</p><button className="primary-button" onClick={onBackup}><Download size={16}/> Exportar respaldo</button></section><section className="panel setting-card"><div className="setting-icon"><FileUp/></div><h2>Restaurar respaldo</h2><p>Importa un respaldo previamente exportado en el dispositivo actual. Los registros se agregan o actualizan.</p><button className="secondary-button" onClick={onRestore}><FileUp size={16}/> Seleccionar archivo</button></section></div><section className="panel reset-test-panel"><div className="reset-test-icon"><RefreshCw size={20}/></div><div><h2>Reiniciar registros de prueba</h2><p>Borra clientes, asistencias, pagos, ventas, productos, inventario, compras, gastos, caja y registros auxiliares. Conserva usuarios y tarifas. En Supabase solo lo puede ejecutar el propietario.</p><small>El sistema pedirá escribir REINICIAR antes de borrar. Esta acción no se puede deshacer; exporta un respaldo primero.</small></div><button className="danger-button" disabled={busy} onClick={onReset}>{busy?'Procesando…':'Reiniciar datos de prueba'}</button></section><section className="panel security-panel"><Shield/><div><h2>Seguridad y acceso</h2><p>Con Supabase, los usuarios se autentican individualmente y la base de datos aplica permisos RLS. Los roles se administran desde el perfil del usuario. No compartas contraseñas ni claves secretas.</p></div></section></>
 }
 
 function AccessDenied(){return <div className="panel access-denied"><Shield size={25}/><h2>Acceso reservado al propietario</h2><p>Este módulo contiene información administrativa. Solicita al propietario que revise los permisos de tu cuenta.</p></div>}
