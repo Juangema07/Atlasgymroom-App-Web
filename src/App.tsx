@@ -610,12 +610,46 @@ function Login({ onSignIn, busy, toast }: { onSignIn: (email: string, password: 
 
 function Dashboard(props: { activeMembers: number; expiredMembers: number; total: number; todayIncome: number; todayAttendances: number; expiring: number; stockLow: Row[]; rows: Record<string,Row[]>; onNavigate:(s:Section)=>void }) {
   const recent = [...(props.rows.payments || []), ...(props.rows.sales || []), ...(props.rows.day_passes || [])].sort((a,b) => String(b.created_at || b.sold_at || b.visited_at).localeCompare(String(a.created_at || a.sold_at || a.visited_at))).slice(0,5)
+  const day = today()
+  const weekStart = datePlusDays(day, -6)
+  const monthStart = day.slice(0,7) + '-01'
+  const payments = props.rows.payments || []
+  const sales = props.rows.sales || []
+  const creditBalance = payments.filter(p => p.status !== 'voided').reduce((sum,p) => sum + Math.max(0,Number(p.amount || 0)-Number(p.amount_paid || 0)),0)
+  const newClientsWeek = (props.rows.members || []).filter(m => dateInBogota(m.created_at) >= weekStart && dateInBogota(m.created_at) <= day).length
+  const birthdayCount = (props.rows.members || []).filter(m => String(m.birth_date || '').slice(5) === day.slice(5)).length
+  const totalFor = (items: Row[], start: string, dateField: string, amountField: string) => items.filter(item => dateInBogota(item[dateField] || item.created_at) >= start && dateInBogota(item[dateField] || item.created_at) <= day).reduce((sum,item) => sum + Number(item[amountField] || 0),0)
+  const paymentToday = totalFor(payments, day, 'paid_at', 'amount_paid')
+  const paymentWeek = totalFor(payments, weekStart, 'paid_at', 'amount_paid')
+  const paymentMonth = totalFor(payments, monthStart, 'paid_at', 'amount_paid')
+  const salesToday = totalFor(sales, day, 'sold_at', 'amount_paid')
+  const salesWeek = totalFor(sales, weekStart, 'sold_at', 'amount_paid')
+  const salesMonth = totalFor(sales, monthStart, 'sold_at', 'amount_paid')
   return <><div className="welcome-row"><div><div className="eyebrow">{new Date().toLocaleDateString('es-CO',{timeZone:'America/Bogota',weekday:'long',day:'numeric',month:'long',year:'numeric'}).toUpperCase()}</div><h1>¡Vamos con toda! <span>💪</span></h1><p className="subheading">Resumen operativo de Atlasgymroom.</p></div><div className="date-button"><CalendarDays size={16}/> Hoy</div></div>
-    <div className="stats-grid"><Stat icon={<Users/>} label="Socios registrados" value={String(props.total)} change={`${props.activeMembers} activos`} tint="green"/><Stat icon={<Activity/>} label="Asistencias de hoy" value={String(props.todayAttendances)} change="Entradas registradas" tint="blue"/><Stat icon={<CircleDollarSign/>} label="Dinero recibido hoy" value={formatMoney(props.todayIncome)} change="Pagos y ventas" tint="yellow"/><Stat icon={<CalendarDays/>} label="Por vencer en 7 días" value={String(props.expiring)} change={`${props.expiredMembers} vencidos`} tint="purple"/></div>
+    <div className="stats-grid"><Stat icon={<Users/>} label="Total de clientes" value={String(props.total)} change={`${props.activeMembers} activos`} tint="green"/><Stat icon={<Activity/>} label="Asistencias de hoy" value={String(props.todayAttendances)} change="Entradas registradas" tint="blue"/><Stat icon={<CircleDollarSign/>} label="Dinero recibido hoy" value={formatMoney(props.todayIncome)} change="Pagos, ventas y pases" tint="yellow"/><Stat icon={<CalendarDays/>} label="Pagos próximos a vencer" value={String(props.expiring)} change={`${props.expiredMembers} vencidos`} tint="purple"/></div>
     <div className="content-grid"><section className="panel"><div className="panel-heading"><div><h2>Movimientos recientes</h2><p>Pagos, ventas y pases diarios</p></div><button className="text-button" onClick={() => props.onNavigate('Informes')}>Ver informes <ArrowUpRight size={15}/></button></div>
       {recent.length ? <div className="activity-list">{recent.map((r,i) => <div className="activity-row" key={r.id}><div className={`avatar ${i%2?'blue':'lime'}`}>{String(r.id).slice(0,2).toUpperCase()}</div><div className="activity-person"><strong>{r.visitor_name || r.notes || (r.member_id ? 'Pago de socio' : r.total != null ? 'Venta de productos' : 'Movimiento')}</strong><small>{r.status || r.method || 'Registrado'}</small></div><div className="activity-time">{formatDate(r.created_at || r.sold_at || r.visited_at)}</div><strong className="activity-amount">{formatMoney(r.amount_paid ?? r.amount ?? r.total)}</strong></div>)}</div> : <Empty text="Aún no hay movimientos. Registra el primer socio, pago o venta."/>}</section>
-      <section className="panel"><div className="panel-heading"><div><h2>Accesos rápidos</h2><p>Operaciones frecuentes</p></div></div><div className="quick-grid"><Quick icon={<UserRound/>} label="Nuevo miembro" onClick={() => props.onNavigate('Miembros')}/><Quick icon={<Activity/>} label="Registrar entrada" onClick={() => props.onNavigate('Asistencia')}/><Quick icon={<CircleDollarSign/>} label="Cobrar mensualidad" onClick={() => props.onNavigate('Pagos')}/><Quick icon={<ShoppingBag/>} label="Nueva venta" onClick={() => props.onNavigate('Ventas')}/></div></section></div>
-    <section className="panel bottom-panel"><div className="panel-heading"><div><h2>Alertas de operación</h2><p>Elementos que necesitan revisión</p></div></div><div className="alerts-grid"><div><strong>{props.expiredMembers}</strong><span>Socios vencidos</span></div><div><strong>{props.stockLow.length}</strong><span>Productos con stock bajo</span></div><div><strong>{props.expiring}</strong><span>Vencimientos próximos</span></div></div>{props.stockLow.length>0 && <div className="low-stock-list">{props.stockLow.slice(0,4).map(p=><span key={p.id}>{p.name} · {p.stock} unidades</span>)}</div>}</section>
+      <section className="panel"><div className="panel-heading"><div><h2>Accesos rápidos</h2><p>Operaciones frecuentes</p></div></div><div className="quick-grid"><Quick icon={<UserRound/>} label="Nuevo cliente" onClick={() => props.onNavigate('Miembros')}/><Quick icon={<Activity/>} label="Registrar entrada" onClick={() => props.onNavigate('Asistencia')}/><Quick icon={<CircleDollarSign/>} label="Registrar pago" onClick={() => props.onNavigate('Pagos')}/><Quick icon={<ShoppingBag/>} label="Nueva venta" onClick={() => props.onNavigate('Ventas')}/></div></section></div>
+    <div className="content-grid dashboard-detail-grid">
+      <section className="panel"><div className="panel-heading"><div><h2>Clientes y cartera</h2><p>Indicadores para la atención diaria</p></div></div>
+        <div className="report-line"><span>Clientes nuevos última semana</span><strong>{newClientsWeek}</strong></div>
+        <div className="report-line"><span>Clientes activos</span><strong>{props.activeMembers}</strong></div>
+        <div className="report-line"><span>Pagos próximos a vencer</span><strong>{props.expiring}</strong></div>
+        <div className="report-line"><span>Pagos a crédito</span><strong>{formatMoney(creditBalance)}</strong></div>
+        <div className="report-line"><span>Cumpleaños de clientes hoy</span><strong>{birthdayCount}</strong></div>
+        <div className="report-line"><span>Productos con stock bajo</span><strong>{props.stockLow.length}</strong></div>
+      </section>
+      <section className="panel"><div className="panel-heading"><div><h2>Ingresos pagos</h2><p>Dinero recibido por mensualidades y tarifas</p></div></div>
+        <div className="report-line"><span>Hoy</span><strong>{formatMoney(paymentToday)}</strong></div>
+        <div className="report-line"><span>Semana</span><strong>{formatMoney(paymentWeek)}</strong></div>
+        <div className="report-line"><span>Mes</span><strong>{formatMoney(paymentMonth)}</strong></div>
+        <div className="panel-heading dashboard-sales-heading"><div><h2>Ingresos ventas</h2><p>Dinero recibido por productos</p></div></div>
+        <div className="report-line"><span>Hoy</span><strong>{formatMoney(salesToday)}</strong></div>
+        <div className="report-line"><span>Semana</span><strong>{formatMoney(salesWeek)}</strong></div>
+        <div className="report-line"><span>Mes</span><strong>{formatMoney(salesMonth)}</strong></div>
+      </section>
+    </div>
+    <section className="panel bottom-panel"><div className="panel-heading"><div><h2>Alertas de operación</h2><p>Elementos que necesitan revisión</p></div></div><div className="alerts-grid"><div><strong>{props.expiredMembers}</strong><span>Clientes vencidos</span></div><div><strong>{props.stockLow.length}</strong><span>Productos con stock bajo</span></div><div><strong>{props.expiring}</strong><span>Vencimientos próximos</span></div></div>{props.stockLow.length>0 && <div className="low-stock-list">{props.stockLow.slice(0,4).map(p=><span key={p.id}>{p.name} · {p.stock} unidades</span>)}</div>}</section>
   </>
 }
 
