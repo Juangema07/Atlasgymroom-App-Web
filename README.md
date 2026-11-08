@@ -13,6 +13,18 @@ Aplicación de administración para un gimnasio de una sede. Incluye panel, soci
 - No usar datos personales ni financieros reales hasta configurar Supabase, promover la cuenta propietaria, validar los permisos y hacer las pruebas de aceptación.
 - El repositorio debe permanecer privado antes de incorporar datos o secretos. No publicar claves secretas.
 
+## Módulos y estado funcional
+
+- Punto de venta: catálogo con búsqueda, carrito editable, control de cantidades frente al stock, comprador opcional, medios de pago, abonos/saldo pendiente y descuento de inventario mediante operación transaccional.
+- Ventas y cartera: consulta de ventas y módulo filtrado de cuentas por cobrar.
+- Gestión auxiliar: evoluciones, rutinas, ejercicios, proveedores, empleados, clases, reservaciones, tipos de gastos, categorías de productos, documentos soporte, notas de ajuste/débito/crédito, y registros administrativos.
+- Los módulos auxiliares usan la tabla genérica `gym_records` y ofrecen altas, consulta, edición y búsqueda. No equivalen todavía a sistemas especializados de rutinas con ejercicios prescritos, envío de correos, reservas con cupos ni documentos electrónicos DIAN.
+- Los módulos de kardex y movimientos de inventario son de consulta. La creación de ajustes de stock con aprobación y motivo queda pendiente de una operación transaccional específica.
+
+### Migración adicional
+
+Si ya existe un proyecto Supabase, ejecutar también `supabase/migrations/202611080002_gym_records.sql` después de la migración inicial para habilitar los módulos auxiliares. No basta con publicar GitHub Pages: Supabase debe estar configurado y autenticado para sincronización compartida.
+
 ## 1. Ejecutar en local
 
 ```bash
