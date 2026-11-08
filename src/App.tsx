@@ -43,13 +43,15 @@ const datePlusDays = (date: string, days: number) => {
   value.setDate(value.getDate() + days)
   return bogotaDate(value)
 }
-const dateInBogota = (value: unknown) => value
-  ? (/^\\d{4}-\\d{2}-\\d{2}$/.test(String(value)) ? String(value) : bogotaDate(new Date(String(value))))
-  : ''
+const dateInBogota = (value: unknown) => {
+  if (!value) return ''
+  const raw = String(value)
+  return raw.length === 10 && raw[4] === '-' && raw[7] === '-' ? raw : bogotaDate(new Date(raw))
+}
 const formatDate = (value: unknown) => {
   if (!value) return '—'
   const raw = String(value)
-  const parsed = /^\\d{4}-\\d{2}-\\d{2}$/.test(raw) ? new Date(`${raw}T12:00:00-05:00`) : new Date(raw)
+  const parsed = raw.length === 10 && raw[4] === '-' && raw[7] === '-' ? new Date(`${raw}T12:00:00-05:00`) : new Date(raw)
   return parsed.toLocaleDateString('es-CO', { timeZone: 'America/Bogota' })
 }
 
