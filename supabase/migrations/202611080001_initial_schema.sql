@@ -259,7 +259,7 @@ create policy owner_insert_plans on public.plans for insert to authenticated wit
 do $
 declare t text;
 begin
-  foreach t in array array['plans','members','payments','attendance','day_passes','products','sales','sale_items','stock_movements','purchases','purchase_items','expenses','cash_sessions','cash_movements'] loop
+  foreach t in array array['profiles','plans','members','payments','attendance','day_passes','products','sales','sale_items','stock_movements','purchases','purchase_items','expenses','cash_sessions','cash_movements'] loop
     execute format('drop trigger if exists audit_%I on public.%I', t, t);
     execute format('create trigger audit_%I after insert or update or delete on public.%I for each row execute procedure public.write_audit_log()', t, t);
   end loop;
@@ -270,6 +270,27 @@ begin
 end $$;
 
 -- Operaciones transaccionales: IDs UUID idempotentes para evitar duplicados al reconectar.
+create or replace function public.create_product(p_product jsonb)
+returns uuid language plpgsql security definer set search_path = public
+as $$
+declare pid uuid := (p_product->>'id')::uuid; initial_stock integer := coalesce((p_product->>'stock')::integer,0);
+begin
+  if not public.is_owner() then raise exception 'Solo el propietario puede crear productos'; end if;
+  if exists(select 1 from public.products where id=pid) then return pid; end if;
+  if initial_stock < 0 then raise exception 'Las existencias iniciales no pueden ser negativas'; end if;
+  insert into public.products(id,name,sku,description,cost,price,stock,min_stock,active,created_by)
+  values(pid,p_product->>'name',nullif(p_product->>'sku',''),p_product->>'description',
+    coalesce((p_product->>'cost')::numeric,0),coalesce((p_product->>'price')::numeric,0),
+    initial_stock,coalesce((p_product->>'min_stock')::integer,0),
+    coalesce((p_product->>'active')::boolean,true),auth.uid());
+  if initial_stock > 0 then
+    insert into public.stock_movements(id,product_id,movement_type,quantity,notes,created_by)
+    values(coalesce(nullif(p_product->>'stock_movement_id','')::uuid,gen_random_uuid()),pid,
+      'adjustment',initial_stock,'Existencias iniciales',auth.uid());
+  end if;
+  return pid;
+end $$;
+
 create or replace function public.record_membership_payment(p_payment jsonb)
 returns uuid language plpgsql security definer set search_path = public
 as $$
@@ -462,15 +483,32 @@ begin
     execute format('drop policy if exists staff_read_%I on public.%I',t,t);
     execute format('create policy staff_read_%I on public.%I for select to authenticated using (public.is_staff())',t,t);
     execute format('drop policy if exists staff_insert_%I on public.%I',t,t);
-    execute format('create policy staff_insert_%I on public.%I for insert to authenticated with check (public.is_staff())',t,t);
   end loop;
 end $$;
 
--- Edición de fichas operativas: empleados pueden actualizar socios y existencias; planes solo dueño.
+-- Escrituras directas limitadas a fichas básicas. Los movimientos económicos y el stock
+-- solo se crean mediante funciones transaccionales SECURITY DEFINER.
+create policy staff_insert_members on public.members for insert to authenticated
+with check (public.is_staff() and created_by = auth.uid());
+create policy staff_insert_attendance on public.attendance for insert to authenticated
+with check (public.is_staff() and created_by = auth.uid());
+
+drop policy if exists owner_insert_plans on public.plans;
+create policy owner_insert_plans on public.plans for insert to authenticated
+with check (public.is_owner() and created_by = auth.uid());
+drop policy if exists owner_update_products on public.products;
+drop policy if exists staff_update_products on public.products;
+create policy owner_update_products on public.products for update to authenticated
+using (public.is_owner()) with check (public.is_owner());
+
+revoke insert on public.profiles, public.payments, public.day_passes, public.products,
+  public.sales, public.sale_items, public.stock_movements, public.purchases,
+  public.purchase_items, public.expenses, public.cash_sessions, public.cash_movements,
+  public.audit_logs from authenticated;
+
+-- Edición de fichas: el personal actualiza socios; el dueño administra planes y productos.
 drop policy if exists staff_update_members on public.members;
 create policy staff_update_members on public.members for update to authenticated using (public.is_staff()) with check (public.is_staff());
-drop policy if exists staff_update_products on public.products;
-create policy staff_update_products on public.products for update to authenticated using (public.is_staff()) with check (public.is_staff());
 drop policy if exists owner_update_plans on public.plans;
 create policy owner_update_plans on public.plans for update to authenticated using (public.is_owner()) with check (public.is_owner());
 drop policy if exists owner_update_cash_sessions on public.cash_sessions;
@@ -487,6 +525,7 @@ grant select, insert, update on public.profiles, public.plans, public.members, p
 grant execute on function public.current_app_role() to authenticated;
 grant execute on function public.is_staff() to authenticated;
 grant execute on function public.is_owner() to authenticated;
+grant execute on function public.create_product(jsonb) to authenticated;
 grant execute on function public.record_membership_payment(jsonb) to authenticated;
 grant execute on function public.complete_sale(jsonb,jsonb) to authenticated;
 grant execute on function public.register_day_pass(jsonb) to authenticated;

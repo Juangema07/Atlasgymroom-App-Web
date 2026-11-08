@@ -55,7 +55,7 @@ export async function saveRow(table: EntityTable, input: Row): Promise<SaveResul
 }
 
 export async function runBusinessRpc(
-  rpc: 'record_membership_payment' | 'complete_sale' | 'register_day_pass' | 'record_expense' | 'receive_purchase' | 'open_cash_session' | 'close_cash_session',
+  rpc: 'create_product' | 'record_membership_payment' | 'complete_sale' | 'register_day_pass' | 'record_expense' | 'receive_purchase' | 'open_cash_session' | 'close_cash_session',
   args: Record<string, any>,
   optimistic: Array<{ table: EntityTable; row: Row }> = [],
 ): Promise<SaveResult> {
