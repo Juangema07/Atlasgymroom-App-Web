@@ -156,8 +156,117 @@ function configFor(section: Section, rows: Record<string, Row[]>): ModuleConfig 
     Equipo: { table: 'profiles', title: 'Equipo y usuarios', description: 'Usuarios individuales. Las cuentas se crean desde Supabase Auth.', fields: [], columns: [{ key: 'full_name', label: 'Nombre' }, { key: 'role', label: 'Rol' }, { key: 'active', label: 'Activo' }] },
     Auditoría: { table: 'audit_logs', title: 'Auditoría', description: 'Historial de modificaciones registradas en la base de datos.', fields: [], columns: [{ key: 'entity_table', label: 'Módulo' }, { key: 'action', label: 'Acción' }, { key: 'entity_id', label: 'Registro' }, { key: 'changed_at', label: 'Fecha' }] },
   }
+
+  const aux: Partial<Record<Section, ModuleConfig>> = {
+    'Evoluciones': { table:'gym_records', title:'Evoluciones', description:'Seguimiento de sesiones y avances de entrenamiento. No sustituye una historia clínica.', fields:[
+      {key:'person_name',label:'Socio',required:true},{key:'record_date',label:'Fecha',type:'date',required:true},
+      {key:'detail_session',label:'Sesión / actividad'},{key:'detail_notes',label:'Observaciones de entrenamiento',type:'textarea'},
+    ], columns:[{key:'person_name',label:'Socio'},{key:'record_date',label:'Fecha'},{key:'detail_session',label:'Actividad'},{key:'status',label:'Estado'}] },
+    'Rutinas': { table:'gym_records', title:'Rutinas', description:'Crea y administra rutinas asignadas a los socios.', fields:[
+      {key:'title',label:'Nombre de la rutina',required:true},{key:'person_name',label:'Socio asignado'},
+      {key:'date_start',label:'Fecha de inicio',type:'date'},{key:'date_end',label:'Fecha de finalización',type:'date'},
+      {key:'status',label:'Estado',type:'select',options:[{value:'active',label:'Activa'},{value:'paused',label:'Pausada'},{value:'completed',label:'Completada'}]},
+      {key:'detail_days_per_week',label:'Días por semana',type:'number'},{key:'detail_goal',label:'Objetivo'},{key:'detail_exercises',label:'Ejercicios / series / repeticiones',type:'textarea'},
+    ], columns:[{key:'title',label:'Rutina'},{key:'person_name',label:'Socio'},{key:'date_start',label:'Inicio'},{key:'date_end',label:'Fin'},{key:'status',label:'Estado'}] },
+    'Ejercicios': { table:'gym_records', title:'Ejercicios', description:'Catálogo de ejercicios e instrucciones para construir rutinas.', fields:[
+      {key:'title',label:'Nombre del ejercicio',required:true},{key:'status',label:'Estado',type:'select',options:[{value:'active',label:'Activo'},{value:'inactive',label:'Inactivo'}]},
+      {key:'detail_muscle_group',label:'Grupo muscular'},{key:'detail_equipment',label:'Equipo'},{key:'detail_instructions',label:'Instrucciones',type:'textarea'},
+    ], columns:[{key:'title',label:'Ejercicio'},{key:'detail_muscle_group',label:'Grupo'},{key:'detail_equipment',label:'Equipo'},{key:'status',label:'Estado'}] },
+    'Proveedores': { table:'gym_records', title:'Proveedores', description:'Directorio de proveedores para asociar a compras.', fields:[
+      {key:'person_name',label:'Nombre del contacto',required:true},{key:'detail_business_name',label:'Empresa'},{key:'phone',label:'Teléfono'},{key:'email',label:'Correo',type:'email'},
+      {key:'detail_tax_id',label:'NIT / identificación'},{key:'detail_address',label:'Dirección'},{key:'status',label:'Estado',type:'select',options:[{value:'active',label:'Activo'},{value:'inactive',label:'Inactivo'}]},
+      {key:'notes',label:'Notas',type:'textarea'},
+    ], columns:[{key:'person_name',label:'Contacto'},{key:'detail_business_name',label:'Empresa'},{key:'phone',label:'Teléfono'},{key:'email',label:'Correo'},{key:'status',label:'Estado'}] },
+    'Empleados': { table:'gym_records', title:'Personal', description:'Directorio operativo del equipo. Las cuentas y permisos de acceso se administran en Usuarios.', fields:[
+      {key:'person_name',label:'Nombre completo',required:true},{key:'phone',label:'Teléfono'},{key:'email',label:'Correo',type:'email'},
+      {key:'detail_position',label:'Cargo / función'},{key:'status',label:'Estado',type:'select',options:[{value:'active',label:'Activo'},{value:'inactive',label:'Inactivo'}]},{key:'notes',label:'Notas',type:'textarea'},
+    ], columns:[{key:'person_name',label:'Nombre'},{key:'detail_position',label:'Cargo'},{key:'phone',label:'Teléfono'},{key:'email',label:'Correo'},{key:'status',label:'Estado'}] },
+    'Cuentas por Cobrar Ventas': { table:'sales', title:'Cuentas por cobrar de ventas', description:'Ventas con saldos pendientes. Registra abonos sin borrar el movimiento original.', fields:[], columns:[
+      {key:'id',label:'Venta'},{key:'total',label:'Total'},{key:'amount_paid',label:'Recibido'},{key:'status',label:'Estado'},{key:'sold_at',label:'Fecha'}
+    ] },
+    'Cuentas por Pagar Compras': { table:'purchases', title:'Cuentas por pagar de compras', description:'Compras con saldo pendiente y registro de abonos.', fields:[], columns:[
+      {key:'supplier',label:'Proveedor'},{key:'description',label:'Concepto'},{key:'total_amount',label:'Total'},{key:'amount_paid',label:'Pagado'},{key:'purchased_at',label:'Fecha'}
+    ] },
+    'Notas Débito': { table:'gym_records', title:'Notas débito · registro interno', description:'Registra solicitudes de ajuste a ventas. No genera una nota electrónica ni modifica automáticamente la contabilidad.', fields:[
+      {key:'title',label:'Concepto',required:true},{key:'person_name',label:'Cliente / tercero'},{key:'record_date',label:'Fecha',type:'date'},
+      {key:'amount',label:'Valor solicitado (COP)',type:'number'},{key:'detail_reference',label:'Venta / referencia'},{key:'notes',label:'Motivo y soporte',type:'textarea'},
+    ], columns:[{key:'title',label:'Concepto'},{key:'person_name',label:'Tercero'},{key:'amount',label:'Valor'},{key:'record_date',label:'Fecha'},{key:'status',label:'Estado'}] },
+    'Notas Crédito': { table:'gym_records', title:'Notas crédito · registro interno', description:'Registra solicitudes de devolución o corrección conservando la referencia original. No emite documento electrónico.', fields:[
+      {key:'title',label:'Concepto',required:true},{key:'person_name',label:'Cliente / tercero'},{key:'record_date',label:'Fecha',type:'date'},
+      {key:'amount',label:'Valor solicitado (COP)',type:'number'},{key:'detail_reference',label:'Venta / referencia'},{key:'notes',label:'Motivo y soporte',type:'textarea'},
+    ], columns:[{key:'title',label:'Concepto'},{key:'person_name',label:'Tercero'},{key:'amount',label:'Valor'},{key:'record_date',label:'Fecha'},{key:'status',label:'Estado'}] },
+    'Documento Soporte': { table:'gym_records', title:'Documentos soporte · control interno', description:'Lleva el registro de documentos recibidos y referencias. No genera Documento Soporte electrónico DIAN.', fields:[
+      {key:'title',label:'Documento / concepto',required:true},{key:'person_name',label:'Proveedor / tercero'},{key:'record_date',label:'Fecha',type:'date'},
+      {key:'amount',label:'Valor (COP)',type:'number'},{key:'detail_document_number',label:'Número de documento'},{key:'detail_file_reference',label:'Referencia del archivo'},{key:'notes',label:'Observaciones',type:'textarea'},
+    ], columns:[{key:'title',label:'Documento'},{key:'person_name',label:'Tercero'},{key:'detail_document_number',label:'Número'},{key:'amount',label:'Valor'},{key:'record_date',label:'Fecha'}] },
+    'Notas Ajuste': { table:'gym_records', title:'Notas de ajuste · registro interno', description:'Registra correcciones administrativas de compras y gastos para revisión.', fields:[
+      {key:'title',label:'Concepto',required:true},{key:'person_name',label:'Proveedor / tercero'},{key:'record_date',label:'Fecha',type:'date'},
+      {key:'amount',label:'Valor (COP)',type:'number'},{key:'detail_reference',label:'Compra / referencia'},{key:'notes',label:'Motivo',type:'textarea'},
+    ], columns:[{key:'title',label:'Concepto'},{key:'person_name',label:'Tercero'},{key:'amount',label:'Valor'},{key:'record_date',label:'Fecha'},{key:'status',label:'Estado'}] },
+    'Tipos de Gastos': { table:'gym_records', title:'Tipos de gastos', description:'Catálogo de categorías para clasificar los egresos.', fields:[
+      {key:'title',label:'Nombre de categoría',required:true},{key:'status',label:'Estado',type:'select',options:[{value:'active',label:'Activa'},{value:'inactive',label:'Inactiva'}]},{key:'notes',label:'Descripción',type:'textarea'},
+    ], columns:[{key:'title',label:'Categoría'},{key:'notes',label:'Descripción'},{key:'status',label:'Estado'}] },
+    'Ajuste Cartera': { table:'gym_records', title:'Ajuste de cartera · solicitudes', description:'Documenta una solicitud de corrección; no altera saldos contables ni pagos automáticamente.', fields:[
+      {key:'title',label:'Concepto',required:true},{key:'person_name',label:'Cliente / tercero'},{key:'record_date',label:'Fecha',type:'date'},
+      {key:'amount',label:'Valor solicitado (COP)',type:'number'},{key:'detail_reference',label:'Cuenta / referencia'},{key:'notes',label:'Motivo de la solicitud',type:'textarea'},
+    ], columns:[{key:'title',label:'Concepto'},{key:'person_name',label:'Tercero'},{key:'amount',label:'Valor'},{key:'record_date',label:'Fecha'},{key:'status',label:'Estado'}] },
+    'Categorías de Producto': { table:'gym_records', title:'Categorías de producto', description:'Administra categorías para organizar el catálogo. Elige la categoría al crear o editar un producto.', fields:[
+      {key:'title',label:'Nombre de categoría',required:true},{key:'status',label:'Estado',type:'select',options:[{value:'active',label:'Activa'},{value:'inactive',label:'Inactiva'}]},{key:'notes',label:'Descripción',type:'textarea'},
+    ], columns:[{key:'title',label:'Categoría'},{key:'notes',label:'Descripción'},{key:'status',label:'Estado'}] },
+    'Ajustes de Inventario': { table:'gym_records', title:'Ajustes de inventario', description:'Registra ajustes justificados. Cada ajuste aprobado actualiza el stock y crea un movimiento en Kardex.', fields:[
+      {key:'title',label:'Motivo del ajuste',required:true},{key:'record_date',label:'Fecha',type:'date',required:true},
+      {key:'detail_product_id',label:'Producto',type:'select',options:[{value:'',label:'Seleccionar producto'},...(rows.products||[]).map(p=>({value:p.id,label:p.name}))],required:true},
+      {key:'detail_quantity',label:'Cantidad',type:'number',required:true},{key:'detail_direction',label:'Tipo',type:'select',options:[{value:'increase',label:'Entrada / sumar'},{value:'decrease',label:'Salida / restar'}],required:true},
+      {key:'notes',label:'Justificación',type:'textarea',required:true},
+    ], columns:[{key:'title',label:'Motivo'},{key:'detail_product_id',label:'Producto'},{key:'detail_quantity',label:'Cantidad'},{key:'record_date',label:'Fecha'},{key:'status',label:'Estado'}] },
+    'Regularizaciones de Inventario': { table:'gym_records', title:'Conteos y regularizaciones', description:'Registra conteos físicos. La diferencia queda como borrador hasta que se confirme mediante un ajuste auditado.', fields:[
+      {key:'title',label:'Conteo / referencia',required:true},{key:'record_date',label:'Fecha',type:'date',required:true},
+      {key:'detail_product_id',label:'Producto',type:'select',options:[{value:'',label:'Seleccionar producto'},...(rows.products||[]).map(p=>({value:p.id,label:p.name}))],required:true},
+      {key:'detail_counted_stock',label:'Existencia contada',type:'number',required:true},{key:'notes',label:'Observaciones',type:'textarea'},
+    ], columns:[{key:'title',label:'Conteo'},{key:'detail_product_id',label:'Producto'},{key:'detail_counted_stock',label:'Contado'},{key:'record_date',label:'Fecha'},{key:'status',label:'Estado'}] },
+    'Kardex de Inventario': { table:'stock_movements', title:'Kardex de inventario', description:'Consulta los movimientos reales de inventario; este historial no permite editar ni borrar operaciones.', fields:[], columns:[
+      {key:'product_id',label:'Producto'},{key:'movement_type',label:'Movimiento'},{key:'quantity',label:'Cantidad'},{key:'notes',label:'Motivo'},{key:'created_at',label:'Fecha'}
+    ] },
+    'Configuración de Reservaciones': { table:'gym_records', title:'Configuración de reservaciones', description:'Define reglas internas, horarios y cupos de referencia. Aún no hay motor externo de reservas ni bloqueo automático de cupos.', fields:[
+      {key:'title',label:'Nombre de la regla',required:true},{key:'status',label:'Estado',type:'select',options:[{value:'active',label:'Activa'},{value:'inactive',label:'Inactiva'}]},
+      {key:'detail_days',label:'Días disponibles'},{key:'detail_start_time',label:'Hora de inicio',type:'time'},{key:'detail_end_time',label:'Hora de fin',type:'time'},
+      {key:'detail_capacity',label:'Cupo de referencia',type:'number'},{key:'notes',label:'Condiciones',type:'textarea'},
+    ], columns:[{key:'title',label:'Regla'},{key:'detail_days',label:'Días'},{key:'detail_capacity',label:'Cupo'},{key:'status',label:'Estado'}] },
+    'Clases': { table:'gym_records', title:'Clases', description:'Programa clases y conserva fecha, instructor y cupo previsto.', fields:[
+      {key:'title',label:'Nombre de la clase',required:true},{key:'record_date',label:'Fecha',type:'date',required:true},{key:'detail_start_time',label:'Inicio',type:'time'},{key:'detail_end_time',label:'Fin',type:'time'},
+      {key:'detail_instructor',label:'Instructor'},{key:'detail_capacity',label:'Cupo',type:'number'},{key:'status',label:'Estado',type:'select',options:[{value:'scheduled',label:'Programada'},{value:'cancelled',label:'Cancelada'},{value:'completed',label:'Realizada'}]},{key:'notes',label:'Descripción',type:'textarea'},
+    ], columns:[{key:'title',label:'Clase'},{key:'record_date',label:'Fecha'},{key:'detail_start_time',label:'Inicio'},{key:'detail_instructor',label:'Instructor'},{key:'status',label:'Estado'}] },
+    'Reservaciones': { table:'gym_records', title:'Reservaciones', description:'Agenda manual de reservas y su estado. La validación automática de cupos y recordatorios aún no está conectada.', fields:[
+      {key:'title',label:'Actividad / clase',required:true},{key:'person_name',label:'Socio / persona',required:true},{key:'phone',label:'Teléfono'},
+      {key:'record_date',label:'Fecha de reserva',type:'date',required:true},{key:'detail_start_time',label:'Hora',type:'time'},
+      {key:'status',label:'Estado',type:'select',options:[{value:'reserved',label:'Reservada'},{value:'attended',label:'Asistió'},{value:'cancelled',label:'Cancelada'}]},{key:'notes',label:'Notas',type:'textarea'},
+    ], columns:[{key:'title',label:'Actividad'},{key:'person_name',label:'Persona'},{key:'record_date',label:'Fecha'},{key:'detail_start_time',label:'Hora'},{key:'status',label:'Estado'}] },
+    'Mi Sucursal': { table:'gym_records', title:'Mi sucursal', description:'Guarda los datos de referencia de la sede del gimnasio.', fields:[
+      {key:'title',label:'Nombre de la sede',required:true},{key:'phone',label:'Teléfono'},{key:'email',label:'Correo',type:'email'},
+      {key:'detail_address',label:'Dirección'},{key:'detail_opening_hours',label:'Horarios',type:'textarea'},{key:'notes',label:'Información adicional',type:'textarea'},
+    ], columns:[{key:'title',label:'Sede'},{key:'phone',label:'Teléfono'},{key:'email',label:'Correo'},{key:'detail_address',label:'Dirección'}] },
+    'Menú de Navegación': { table:'gym_records', title:'Menú de navegación', description:'Administra notas y organización de navegación; los permisos efectivos se controlan desde Usuarios.', fields:[
+      {key:'title',label:'Nombre del apartado',required:true},{key:'detail_group',label:'Grupo del menú'},{key:'detail_order',label:'Orden',type:'number'},{key:'status',label:'Estado',type:'select',options:[{value:'active',label:'Visible'},{value:'inactive',label:'Oculto'}]},{key:'notes',label:'Descripción',type:'textarea'},
+    ], columns:[{key:'title',label:'Apartado'},{key:'detail_group',label:'Grupo'},{key:'detail_order',label:'Orden'},{key:'status',label:'Estado'}] },
+    'Roles': { table:'gym_records', title:'Perfiles de permisos', description:'Guarda perfiles de permisos de referencia. Los permisos que realmente se aplican se administran usuario por usuario en Usuarios.', fields:[
+      {key:'title',label:'Nombre del perfil',required:true},{key:'notes',label:'Descripción',type:'textarea'},{key:'status',label:'Estado',type:'select',options:[{value:'active',label:'Activo'},{value:'inactive',label:'Inactivo'}]},
+    ], columns:[{key:'title',label:'Perfil'},{key:'notes',label:'Descripción'},{key:'status',label:'Estado'}] },
+    'Configuración de Correos': { table:'gym_records', title:'Configuración de correos', description:'El envío de invitaciones usa Supabase Auth. SMTP, URL del sitio y plantillas de autenticación deben configurarse en el panel Supabase; no guardes contraseñas SMTP aquí.', fields:[
+      {key:'title',label:'Nombre de la configuración',required:true},{key:'detail_sender_name',label:'Nombre del remitente'},{key:'detail_sender_email',label:'Correo del remitente',type:'email'},{key:'notes',label:'Notas de configuración',type:'textarea'},
+    ], columns:[{key:'title',label:'Configuración'},{key:'detail_sender_name',label:'Remitente'},{key:'detail_sender_email',label:'Correo'}] },
+    'Plantilla de Correos': { table:'gym_records', title:'Plantillas de correos', description:'Edita textos de referencia. El envío automático de estas plantillas no está conectado todavía.', fields:[
+      {key:'title',label:'Nombre de plantilla',required:true},{key:'detail_subject',label:'Asunto'},{key:'detail_body',label:'Contenido',type:'textarea'},{key:'status',label:'Estado',type:'select',options:[{value:'active',label:'Activa'},{value:'inactive',label:'Inactiva'}]},
+    ], columns:[{key:'title',label:'Plantilla'},{key:'detail_subject',label:'Asunto'},{key:'status',label:'Estado'}] },
+    'Notificaciones': { table:'gym_records', title:'Notificaciones internas', description:'Registra avisos internos para consulta en la administración. Push y correo masivo no están conectados.', fields:[
+      {key:'title',label:'Aviso',required:true},{key:'person_name',label:'Destinatario / grupo'},{key:'record_date',label:'Fecha',type:'date'},{key:'status',label:'Estado',type:'select',options:[{value:'draft',label:'Borrador'},{value:'active',label:'Activo'},{value:'closed',label:'Cerrado'}]},{key:'notes',label:'Mensaje',type:'textarea'},
+    ], columns:[{key:'title',label:'Aviso'},{key:'person_name',label:'Destinatario'},{key:'record_date',label:'Fecha'},{key:'status',label:'Estado'}] },
+    'Historial de Correos': { table:'gym_records', title:'Historial de correos', description:'Consulta solicitudes de invitación registradas. El estado refleja la solicitud a Supabase Auth, no confirma entrega o lectura del correo.', fields:[], columns:[
+      {key:'title',label:'Evento'},{key:'person_name',label:'Persona'},{key:'email',label:'Correo'},{key:'status',label:'Estado'},{key:'record_date',label:'Fecha'}
+    ] },
+  }
+
   const normalized: Section = section === 'Tarifas' || section === 'Lista de Precios' ? 'Planes' : section === 'Cuentas por Cobrar Pagos' ? 'Pagos' : section === 'Congelar Pagos' ? 'Miembros' : section
-  const config = base[normalized] as ModuleConfig | undefined
+  const config = (base[normalized] || aux[section]) as ModuleConfig | undefined
   if (!config) return null
   if (section === 'Cuentas por Cobrar Pagos') return { ...config, title: 'Cuentas por cobrar pagos', description: 'Abonos pendientes y saldos que faltan por recibir.' }
   if (section === 'Congelar Pagos') return { ...config, title: 'Congelar pagos', description: 'Clientes con actividad pausada y acciones para reactivar su tarifa.' }
