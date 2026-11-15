@@ -322,7 +322,6 @@ const permissionGroups = [
     {key:'employees',label:'Empleados y equipo',actions:['view','create','update']},{key:'branch',label:'Mi sucursal',actions:['view','update']},
     {key:'navigation',label:'Menú de navegación',actions:['view','update']},{key:'roles',label:'Roles',actions:['view','update']},
     {key:'users',label:'Usuarios',actions:['view','create','update']},{key:'audit',label:'Auditoría',actions:['view']},
-    {key:'settings',label:'Configuración',actions:['view','update']},
   ] },
   { title:'Comunicaciones', modules:[
     {key:'email_settings',label:'Configuración de correos',actions:['view']},{key:'email_templates',label:'Plantillas de correos',actions:['view','create','update']},
@@ -483,6 +482,7 @@ export default function App() {
   const isOwner = profile?.role === 'owner' && profile?.active !== false
   const canModule = (target: Section, action: string = 'view') => {
     if (profile?.active === false) return false;
+    if (['Usuarios','Equipo','Configuración'].includes(target)) return profile?.role === 'owner';
     if (profile?.role === 'owner') return true;
     return profile?.permissions?.[permissionKeyFor(target)]?.[action] === true;
   };
@@ -546,6 +546,10 @@ export default function App() {
     setTermsStatus('accepted');
     setTermsBusy(false);
     notify('Aceptación registrada. Ya puedes utilizar los apartados autorizados.');
+    if (profile?.role === 'owner') {
+      const { data } = await supabase.from('user_terms_acceptances').select('user_id,terms_version,accepted_at').order('accepted_at',{ascending:false});
+      if (data) setUserAcceptances(data as Row[]);
+    }
     void syncPending().then(() => refresh());
   }
 
