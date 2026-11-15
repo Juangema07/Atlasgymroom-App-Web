@@ -159,6 +159,19 @@ Deno.serve(async (req: Request) => {
     return reply(500, { error: "No se pudo asignar el nivel de acceso; la invitación fue revertida" });
   }
 
+  const { error: historyError } = await adminClient.from("user_permission_history").insert({
+    user_id: newUser.id,
+    changed_by: authData.user.id,
+    previous_permissions: {},
+    new_permissions: permissions,
+    permissions_version: 1,
+  });
+  if (historyError) {
+    await adminClient.from("profiles").delete().eq("id", newUser.id);
+    await adminClient.auth.admin.deleteUser(newUser.id);
+    return reply(500, { error: "No se pudo registrar el historial de permisos; la invitación fue revertida" });
+  }
+
   // Log the request, not delivery: successful invitation creation does not prove SMTP delivery.
   await adminClient.from("gym_records").insert({
     record_type: "Historial de Correos",
