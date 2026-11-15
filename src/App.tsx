@@ -873,8 +873,8 @@ function DataModule({ config, rows, isOwner, search, setSearch, onCreate, onEdit
     if (quickFilter === 'paused') return Boolean(row.paused_at)
     if (quickFilter === 'active') return config.table === 'members' ? memberIsActive(row) : row.status === 'active' || row.active === true
     if (quickFilter === 'expiring') return config.table === 'members' && memberIsActive(row) && Boolean(row.end_date) && String(row.end_date) <= datePlusDays(today(), 7)
-    if (quickFilter === 'expired') return config.table === 'members' && Boolean(row.end_date) && String(row.end_date) < today()
-    if (quickFilter === 'inactive') return row.status === 'inactive' || row.active === false
+    if (quickFilter === 'expired') return config.table === 'members' && !row.paused_at && Boolean(row.end_date) && String(row.end_date) < today()
+    if (quickFilter === 'inactive') return !row.paused_at && (row.status === 'inactive' || row.active === false)
     if (quickFilter === 'pending') return Number(row.amount || 0) > Number(row.amount_paid || 0) && row.status !== 'voided'
     if (quickFilter === 'paid') return row.status === 'paid' || Number(row.amount || 0) <= Number(row.amount_paid || 0)
     return true
