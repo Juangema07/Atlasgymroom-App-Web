@@ -530,17 +530,57 @@ export default function App() {
     setSection('Inicio')
   }
 
-  async function createStaffUser(payload: { full_name: string; email: string; role: 'owner' | 'cashier' }) {
-    if (!supabase || !isOwner) throw new Error('Solo un administrador puede crear usuarios.')
-    setBusy(true)
-    try {
-      const { data, error } = await supabase.functions.invoke('manage-user', { body: payload })
-      if (error) throw new Error(error.message || 'No se pudo enviar la invitación.')
-      await refresh()
-      notify(String(data?.message || 'Invitación enviada correctamente.'))
-    } finally {
-      setBusy(false)
+  async function acceptTerms() {
+    if (!supabase || !session?.user || !termsRecord) return;
+    setTermsBusy(true);
+    setTermsError('');
+    const { error } = await supabase.from('user_terms_acceptances').insert({
+      user_id: session.user.id,
+      terms_version: termsRecord.version,
+    });
+    if (error && error.code !== '23505') {
+      setTermsError(error.message || 'No se pudo guardar la aceptación.');
+      setTermsBusy(false);
+      return;
     }
+    setTermsStatus('accepted');
+    setTermsBusy(false);
+    notify('Aceptación registrada. Ya puedes utilizar los apartados autorizados.');
+    void syncPending().then(() => refresh());
+  }
+
+  async function createStaffUser(payload: { full_name: string; email: string; role: 'owner' | 'cashier'; permissions: Record<string,Record<string,boolean>> }) {
+    if (!supabase || !isOwner) throw new Error('Solo un administrador puede crear usuarios.');
+    setBusy(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('manage-user', { body: payload });
+      if (error) throw new Error(error.message || 'No se pudo enviar la invitación.');
+      await refresh();
+      notify(String(data?.message || 'Invitación creada correctamente.'));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function updateStaffPermissions(userId:string, permissions:Record<string,Record<string,boolean>>) {
+    if (!supabase || !isOwner) throw new Error('Solo un administrador puede cambiar permisos.');
+    setBusy(true);
+    const { error } = await supabase.from('profiles').update({ permissions }).eq('id',userId).eq('role','cashier');
+    setBusy(false);
+    if (error) throw new Error(error.message || 'No se pudieron guardar los permisos.');
+    await refresh();
+    notify('Permisos actualizados. Se aplicarán también a las siguientes solicitudes de la cuenta.');
+  }
+
+  async function toggleStaffActive(user:Row) {
+    if (!supabase || !isOwner) throw new Error('Solo un administrador puede modificar cuentas.');
+    if (user.id === session?.user.id) { notify('No puedes desactivar la cuenta que estás utilizando.'); return; }
+    setBusy(true);
+    const { error } = await supabase.from('profiles').update({ active:user.active === false }).eq('id',user.id);
+    setBusy(false);
+    if (error) throw new Error(error.message || 'No se pudo actualizar el estado de la cuenta.');
+    await refresh();
+    notify(user.active === false ? 'Cuenta reactivada.' : 'Cuenta desactivada. Los permisos dejarán de autorizar operaciones.');
   }
 
   function printCashReport(record: Row) {
