@@ -594,7 +594,7 @@ export default function App() {
     setEditing(edit || null)
     setProductImageFile(null); setProductImagePreview(edit?.image_url || '')
     const initial: Record<string, string> = {}
-    moduleConfig.fields.forEach(f => { initial[f.key] = edit?.[f.key] == null ? '' : String(edit[f.key]) })
+    moduleConfig.fields.forEach(f => { const value = f.key.startsWith('detail_') ? edit?.details?.[f.key.slice(7)] : edit?.[f.key]; initial[f.key] = value == null ? '' : String(value) })
     setForm(initial)
     setDialog('record')
   }
@@ -672,7 +672,16 @@ export default function App() {
       row.entered_at = nowIso()
     }
     if (section === 'Planes') row.active = form.active !== 'false'
-    if (moduleConfig.table === 'gym_records') { row.record_type = section; row.amount = Number(row.amount || 0) }
+    if (moduleConfig.table === 'gym_records') {
+      const detailValues = Object.fromEntries(Object.entries(form)
+        .filter(([key]) => key.startsWith('detail_'))
+        .map(([key,value]) => [key.slice(7), value === '' ? null : value]));
+      for (const key of Object.keys(row)) if (key.startsWith('detail_')) delete row[key];
+      row.details = { ...(editing?.details || {}), ...detailValues };
+      row.record_type = section;
+      row.module_key = permissionKeyFor(section);
+      row.amount = Number(row.amount || 0);
+    }
     setBusy(true)
     if (section === 'Productos' && productImageFile) {
       try {
@@ -691,17 +700,38 @@ export default function App() {
       }
     }
     try {
-      const stockMovementId = makeId()
-      const result = section === 'Productos' && !editing
-        ? await runBusinessRpc('create_product', { p_product: { ...row, stock_movement_id: stockMovementId } }, [
-            { table: 'products', row },
-            ...(Number(row.stock) > 0 ? [{ table: 'stock_movements' as const, row: { id: stockMovementId, product_id: row.id, movement_type: 'adjustment', quantity: Number(row.stock), notes: 'Existencias iniciales', created_by: session?.user.id || null, created_at: nowIso() } }] : []),
-          ])
-        : section === 'Productos' && editing
-          ? await updateRow(moduleConfig.table, row)
-          : section === 'Asistencia'
-            ? await runBusinessRpc('register_attendance', { p_attendance: row }, [{ table: 'attendance', row }])
-            : await saveRow(moduleConfig.table, row)
+      const stockMovementId = makeId();
+      let result;
+      if (section === 'Productos' && !editing) {
+        result = await runBusinessRpc('create_product', { p_product: { ...row, stock_movement_id: stockMovementId } }, [
+          { table: 'products', row },
+          ...(Number(row.stock) > 0 ? [{ table: 'stock_movements' as const, row: { id: stockMovementId, product_id: row.id, movement_type: 'adjustment', quantity: Number(row.stock), notes: 'Existencias iniciales', created_by: session?.user.id || null, created_at: nowIso() } }] : []),
+        ]);
+      } else if (section === 'Productos' && editing) {
+        result = await updateRow(moduleConfig.table, row);
+      } else if (section === 'Asistencia') {
+        result = await runBusinessRpc('register_attendance', { p_attendance: row }, [{ table: 'attendance', row }]);
+      } else if (section === 'Ajustes de Inventario') {
+        const details = row.details || {};
+        const product = rows.products?.find(p => p.id === details.product_id);
+        const quantity = Number(details.quantity || 0);
+        const delta = details.direction === 'decrease' ? -quantity : quantity;
+        if (!product || !Number.isInteger(quantity) || quantity <= 0 || delta === 0) {
+          notify('Selecciona un producto y una cantidad válida para el ajuste.'); return;
+        }
+        const movement = { id:stockMovementId,product_id:product.id,movement_type:'adjustment',quantity:delta,notes:String(row.notes || row.title),created_by:session?.user.id || null,created_at:nowIso() };
+        result = await runBusinessRpc('adjust_product_stock', {
+          p_product_id:product.id,p_delta:delta,p_reason:String(row.notes || row.title),p_movement_id:stockMovementId,
+        }, [
+          { table:'products',row:{...product,stock:Number(product.stock)+delta,updated_at:nowIso()} },
+          { table:'stock_movements',row:movement },
+        ]);
+        if (result.message?.startsWith('El servidor rechazó')) { notify(result.message); return; }
+        const recordResult = await saveRow('gym_records', {...row,status:result.synced?'applied':'pending_sync'});
+        if (recordResult.message?.startsWith('El servidor rechazó')) { notify(recordResult.message); return; }
+      } else {
+        result = await saveRow(moduleConfig.table, row);
+      }
       if (result.message?.startsWith('El servidor rechazó')) { notify(result.message); return }
       setDialog(null); setProductImageFile(null); setProductImagePreview('')
       notify(result.message || (result.synced ? 'Registro guardado y sincronizado.' : 'Registro guardado localmente.'))
