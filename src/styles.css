@@ -452,3 +452,29 @@ table tr:hover td{background:#1c2834}
   .cash-print-empty{padding:10px;background:#f4f6f4}.cash-print-notes{margin-top:13px;padding:9px;border:1px solid #d7ded9;border-radius:5px;font-size:8pt}
   .cash-print-footer{display:flex;justify-content:space-between;gap:10px;border-top:1px solid #d7ded9;margin-top:22px;padding-top:8px;color:#68746d;font-size:7pt}
 }
+
+
+/* Atlasgymrun: administración compacta y vistas operativas */
+.admin-data-panel{overflow:hidden}
+.admin-data-toolbar{display:flex;align-items:center;gap:12px;padding:13px 15px;flex-wrap:wrap}
+.admin-data-summary{display:flex;align-items:baseline;gap:5px;min-width:110px;color:#8796a2;font-size:10px}
+.admin-data-summary strong{font:800 20px 'Space Grotesk';color:#edf2f6}
+.admin-data-toolbar .search-box{flex:1;min-width:180px}
+.admin-view-switch,.admin-quick-filters{display:flex;align-items:center;gap:5px;flex-wrap:wrap}
+.admin-view-switch{padding:3px;border:1px solid #344451;border-radius:9px;background:#111b25}
+.admin-view-switch button,.admin-quick-filters button{border:0;border-radius:7px;padding:7px 10px;background:transparent;color:#91a0ac;font:700 10px inherit;cursor:pointer}
+.admin-view-switch button.selected,.admin-quick-filters button.selected{background:#b6e77a;color:#172019}
+.admin-quick-filters{padding:0 15px 12px}
+.admin-quick-filters button{border:1px solid #344451;background:#17232d}
+.admin-record-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(235px,1fr));gap:10px;padding:14px}
+.admin-record-card{min-width:0;padding:13px;border:1px solid #344451;border-radius:11px;background:linear-gradient(145deg,#1b2832,#151f28)}
+.admin-record-card-heading{display:flex;flex-direction:column;gap:4px;margin-bottom:10px}
+.admin-record-card-heading strong{font-size:13px;color:#edf2f6;overflow-wrap:anywhere}
+.admin-record-card-heading small{font-size:9px;color:#9eacb7}
+.admin-record-card dl{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin:0}
+.admin-record-card dl>div{min-width:0}
+.admin-record-card dt{font-size:8px;color:#7e8e9b;text-transform:uppercase;letter-spacing:.5px}
+.admin-record-card dd{margin:3px 0 0;font-size:10px;color:#e1e8ed;overflow-wrap:anywhere}
+.admin-record-actions{display:flex;gap:6px;margin-top:12px;padding-top:10px;border-top:1px solid #344451}
+.admin-record-actions .table-action{min-width:31px;min-height:30px}
+@media(max-width:680px){.admin-data-toolbar{align-items:stretch;padding:11px}.admin-data-summary{width:100%}.admin-data-toolbar .search-box{flex-basis:100%}.admin-view-switch{width:max-content}.admin-record-grid{grid-template-columns:1fr;padding:10px}.admin-record-card dl{grid-template-columns:repeat(2,minmax(0,1fr))}}
