@@ -65,6 +65,16 @@ const navGroups: NavGroup[] = [
 ]
 const methods = [{ value: 'cash', label: 'Efectivo' }, { value: 'transfer', label: 'Transferencia' }, { value: 'nequi', label: 'Nequi' }, { value: 'card', label: 'Datáfono / tarjeta' }, { value: 'other', label: 'Otro' }]
 const statuses = [{ value: 'active', label: 'Activo' }, { value: 'inactive', label: 'Inactivo' }, { value: 'expired', label: 'Vencido' }, { value: 'debt', label: 'Con saldo pendiente' }]
+const documentTypes = [
+  { value: 'cedula_ciudadania', label: 'Cédula de ciudadanía (CC)' },
+  { value: 'tarjeta_identidad', label: 'Tarjeta de identidad (TI)' },
+  { value: 'cedula_extranjeria', label: 'Cédula de extranjería (CE)' },
+  { value: 'pasaporte', label: 'Pasaporte' },
+  { value: 'permiso_proteccion_temporal', label: 'Permiso por Protección Temporal (PPT)' },
+  { value: 'nit', label: 'NIT' },
+  { value: 'otro', label: 'Otro documento' },
+]
+const documentTypeLabel = (value: unknown) => documentTypes.find(option => option.value === String(value || 'cedula_ciudadania'))?.label || 'Cédula de ciudadanía (CC)'
 const defaultTariffs: Row[] = [
   { id: '10000000-0000-4000-8000-000000000001', name: 'Diario', plan_type: 'normal', duration_days: 1, ticket_quantity: 0, price: 4000, active: true, allow_price_change: true, start_time: '05:00', end_time: '22:00', second_start_time: '12:00', second_end_time: '12:00', available_days: 'Lun,Mar,Mie,Jue,Vie,Sab,Dom', includes_tax: false, sale_price: 0, taxes: '', notes: 'Acceso por un día' },
   { id: '10000000-0000-4000-8000-000000000002', name: 'Quincenal', plan_type: 'normal', duration_days: 15, ticket_quantity: 0, price: 30000, active: true, allow_price_change: true, start_time: '05:00', end_time: '22:00', second_start_time: '12:00', second_end_time: '12:00', available_days: 'Lun,Mar,Mie,Jue,Vie,Sab,Dom', includes_tax: false, sale_price: 0, taxes: '', notes: 'Tarifa por 15 días' },
@@ -103,12 +113,14 @@ function configFor(section: Section, rows: Record<string, Row[]>): ModuleConfig 
   const planOptions = (rows.plans || []).map(p => ({ value: p.id, label: p.name }))
   const base: Partial<Record<Section, ModuleConfig>> = {
     Miembros: { table: 'members', title: 'Miembros', description: 'Perfiles, estado y vigencia de los socios.', fields: [
-      { key: 'full_name', label: 'Nombre completo', required: true }, { key: 'document', label: 'Cédula (obligatoria)', required: true, placeholder: 'Número de identificación' },
+      { key: 'full_name', label: 'Nombre completo', required: true },
+      { key: 'document_type', label: 'Tipo de documento', type: 'select', required: true, options: documentTypes },
+      { key: 'document', label: 'Número de documento (obligatorio)', required: true, placeholder: 'Escribe el número de identificación' },
       { key: 'phone', label: 'Teléfono' }, { key: 'email', label: 'Correo', type: 'email' },
       { key: 'birth_date', label: 'Fecha de nacimiento', type: 'date' }, { key: 'current_plan_id', label: 'Plan', type: 'select', options: [{ value: '', label: 'Sin plan asignado' }, ...planOptions] },
       { key: 'start_date', label: 'Inicio', type: 'date' }, { key: 'end_date', label: 'Vencimiento', type: 'date' },
       { key: 'status', label: 'Estado', type: 'select', options: statuses }, { key: 'notes', label: 'Notas', type: 'textarea' },
-    ], columns: [{ key: 'full_name', label: 'Nombre' }, { key: 'document', label: 'Cédula' }, { key: 'phone', label: 'Teléfono' }, { key: 'status', label: 'Estado' }, { key: 'end_date', label: 'Vence' }] },
+    ], columns: [{ key: 'full_name', label: 'Nombre' }, { key: 'document_type', label: 'Tipo de documento' }, { key: 'document', label: 'Número' }, { key: 'phone', label: 'Teléfono' }, { key: 'status', label: 'Estado' }, { key: 'end_date', label: 'Vence' }] },
     Planes: { table: 'plans', title: 'Tarifas', description: 'Configura duración, precio, horarios, días disponibles e información tributaria.', fields: [
       { key: 'name', label: 'Nombre de la tarifa', required: true },
       { key: 'plan_type', label: 'Tipo de tarifa', type: 'select', options: [{ value: 'normal', label: 'Normal' }, { value: 'ticket', label: 'Ticket por días' }] },
@@ -333,9 +345,13 @@ export default function App() {
     }
     if (section === 'Miembros') {
       row.status ||= 'active'; row.current_plan_id ||= null
+      const documentType = String(row.document_type || 'cedula_ciudadania').trim()
       const document = String(row.document || '').trim().replace(/\s+/g, '')
-      if (!document) { notify('La cédula es obligatoria para registrar un cliente.'); return }
-      if (members.some(m => String(m.document || '').replace(/\\s+/g, '') === document && m.id !== row.id)) { notify('Ya existe un cliente registrado con esa cédula.'); return }
+      if (!documentType || !documentTypes.some(option => option.value === documentType)) { notify('Selecciona un tipo de documento válido.'); return }
+      if (!document) { notify('El número de documento es obligatorio para registrar un cliente.'); return }
+      const normalizedDocument = document.replace(/\s+/g, '').toUpperCase()
+      if (members.some(m => String(m.document || '').replace(/\s+/g, '').toUpperCase() === normalizedDocument && String(m.document_type || 'cedula_ciudadania') === documentType && m.id !== row.id)) { notify('Ya existe un cliente con ese tipo y número de documento.'); return }
+      row.document_type = documentType
       row.document = document
     }
     if (section === 'Productos') { row.stock = Number(row.stock || 0); row.min_stock = Number(row.min_stock || 0); row.cost = Number(row.cost || 0); row.price = Number(row.price || 0); row.category = String(row.category || 'Otros').trim() || 'Otros'; row.active = true }
@@ -364,19 +380,27 @@ export default function App() {
         setBusy(false); notify(error instanceof Error ? error.message : 'No se pudo procesar la imagen.'); return
       }
     }
-    const stockMovementId = makeId()
-    const result = section === 'Productos' && !editing
-      ? await runBusinessRpc('create_product', { p_product: { ...row, stock_movement_id: stockMovementId } }, [
-          { table: 'products', row },
-          ...(Number(row.stock) > 0 ? [{ table: 'stock_movements' as const, row: { id: stockMovementId, product_id: row.id, movement_type: 'adjustment', quantity: Number(row.stock), notes: 'Existencias iniciales', created_by: session?.user.id || null, created_at: nowIso() } }] : []),
-        ])
-      : section === 'Productos' && editing
-        ? await updateRow(moduleConfig.table, row)
-        : section === 'Asistencia'
-          ? await runBusinessRpc('register_attendance', { p_attendance: row }, [{ table: 'attendance', row }])
-          : await saveRow(moduleConfig.table, row)
-    setBusy(false); setDialog(null); setProductImageFile(null); setProductImagePreview(''); notify(result.message || (result.synced ? 'Registro guardado y sincronizado.' : 'Registro guardado localmente.'))
-    await refresh()
+    try {
+      const stockMovementId = makeId()
+      const result = section === 'Productos' && !editing
+        ? await runBusinessRpc('create_product', { p_product: { ...row, stock_movement_id: stockMovementId } }, [
+            { table: 'products', row },
+            ...(Number(row.stock) > 0 ? [{ table: 'stock_movements' as const, row: { id: stockMovementId, product_id: row.id, movement_type: 'adjustment', quantity: Number(row.stock), notes: 'Existencias iniciales', created_by: session?.user.id || null, created_at: nowIso() } }] : []),
+          ])
+        : section === 'Productos' && editing
+          ? await updateRow(moduleConfig.table, row)
+          : section === 'Asistencia'
+            ? await runBusinessRpc('register_attendance', { p_attendance: row }, [{ table: 'attendance', row }])
+            : await saveRow(moduleConfig.table, row)
+      if (result.message?.startsWith('El servidor rechazó')) { notify(result.message); return }
+      setDialog(null); setProductImageFile(null); setProductImagePreview('')
+      notify(result.message || (result.synced ? 'Registro guardado y sincronizado.' : 'Registro guardado localmente.'))
+      await refresh()
+    } catch (error) {
+      notify(error instanceof Error ? error.message : 'No se pudo guardar el registro. Revisa los datos e inténtalo de nuevo.')
+    } finally {
+      setBusy(false)
+    }
   }
 
   async function submitPayment(event: FormEvent) {
@@ -611,8 +635,8 @@ export default function App() {
         <button className="command-tile" onClick={() => handleSection('Informes')}><span><BarChart3 size={19}/></span><strong>Ver informes</strong><small>Gráficas y totales</small></button>
       </section>
       <section className="front-desk-bar">
-        <div className="desk-search"><label><Activity size={15}/> Registrar asistencia</label><input value={attendanceLookup} onChange={e=>setAttendanceLookup(e.target.value)} placeholder="Cédula o nombre del cliente…"/>{attendanceLookup.trim() && <div className="lookup-results">{members.filter(m=>String(m.document||'').toLowerCase().includes(attendanceLookup.toLowerCase())||String(m.full_name||'').toLowerCase().includes(attendanceLookup.toLowerCase())).slice(0,6).map(m=><button key={m.id} disabled={busy} onClick={()=>void registerMemberEntry(m)}><span><strong>{m.full_name}</strong><small>C.C. {m.document} · {m.end_date && m.end_date >= today() && m.status==='active'?'Tarifa vigente':'Revisar tarifa'}</small></span><b>Registrar entrada</b></button>)}{!members.some(m=>String(m.document||'').toLowerCase().includes(attendanceLookup.toLowerCase())||String(m.full_name||'').toLowerCase().includes(attendanceLookup.toLowerCase()))&&<p>No encontramos ese cliente. Regístralo desde Clientes.</p>}</div>}</div>
-        <div className="desk-search"><label><Users size={15}/> Buscar / gestionar cliente</label><input value={memberLookup} onChange={e=>setMemberLookup(e.target.value)} placeholder="Cédula o nombre para abrir su ficha…"/>{memberLookup.trim() && <div className="lookup-results">{members.filter(m=>String(m.document||'').toLowerCase().includes(memberLookup.toLowerCase())||String(m.full_name||'').toLowerCase().includes(memberLookup.toLowerCase())).slice(0,6).map(m=><div className="lookup-member-row" key={m.id}><span><strong>{m.full_name}</strong><small>C.C. {m.document} · {m.paused_at?'Pausado':m.end_date && m.end_date < today()?'Vencido':'Activo'}</small></span><div><button onClick={()=>{setSection('Miembros');setMemberLookup('');setSearch('');setEditing(m);const initial:Record<string,string>={};configFor('Miembros',rows)?.fields.forEach(f=>initial[f.key]=m[f.key]==null?'':String(m[f.key]));setForm(initial);setDialog('record')}}>Abrir ficha</button><button onClick={()=>{setMemberLookup('');openMemberPayment(m)}}>Pago</button><button onClick={()=>{setMemberLookup('');void toggleMemberPause(m)}}>{m.paused_at?'Reactivar':'Pausar'}</button></div></div>)}</div>}</div>
+        <div className="desk-search"><label><Activity size={15}/> Registrar asistencia</label><input value={attendanceLookup} onChange={e=>setAttendanceLookup(e.target.value)} placeholder="Cédula o nombre del cliente…"/>{attendanceLookup.trim() && <div className="lookup-results">{members.filter(m=>String(m.document||'').toLowerCase().includes(attendanceLookup.toLowerCase())||String(m.full_name||'').toLowerCase().includes(attendanceLookup.toLowerCase())).slice(0,6).map(m=><button key={m.id} disabled={busy} onClick={()=>void registerMemberEntry(m)}><span><strong>{m.full_name}</strong><small>{documentTypeLabel(m.document_type)} · {m.document} · {m.end_date && m.end_date >= today() && m.status==='active'?'Tarifa vigente':'Revisar tarifa'}</small></span><b>Registrar entrada</b></button>)}{!members.some(m=>String(m.document||'').toLowerCase().includes(attendanceLookup.toLowerCase())||String(m.full_name||'').toLowerCase().includes(attendanceLookup.toLowerCase()))&&<p>No encontramos ese cliente. Regístralo desde Clientes.</p>}</div>}</div>
+        <div className="desk-search"><label><Users size={15}/> Buscar / gestionar cliente</label><input value={memberLookup} onChange={e=>setMemberLookup(e.target.value)} placeholder="Cédula o nombre para abrir su ficha…"/>{memberLookup.trim() && <div className="lookup-results">{members.filter(m=>String(m.document||'').toLowerCase().includes(memberLookup.toLowerCase())||String(m.full_name||'').toLowerCase().includes(memberLookup.toLowerCase())).slice(0,6).map(m=><div className="lookup-member-row" key={m.id}><span><strong>{m.full_name}</strong><small>{documentTypeLabel(m.document_type)} · {m.document} · {m.paused_at?'Pausado':m.end_date && m.end_date < today()?'Vencido':'Activo'}</small></span><div><button onClick={()=>{setSection('Miembros');setMemberLookup('');setSearch('');setEditing(m);const initial:Record<string,string>={};configFor('Miembros',rows)?.fields.forEach(f=>initial[f.key]=m[f.key]==null?'':String(m[f.key]));setForm(initial);setDialog('record')}}>Abrir ficha</button><button onClick={()=>{setMemberLookup('');openMemberPayment(m)}}>Pago</button><button onClick={()=>{setMemberLookup('');void toggleMemberPause(m)}}>{m.paused_at?'Reactivar':'Pausar'}</button></div></div>)}</div>}</div>
         <div className="desk-shortcuts"><button onClick={()=>{setSection('Miembros');setEditing(null);const fields=configFor('Miembros',rows)?.fields||[];const blank:Record<string,string>={};fields.forEach(field=>blank[field.key]='');setForm(blank);setDialog('record')}}><Plus size={15}/> Nuevo cliente</button><button onClick={()=>openSpecial('payment')}><CircleDollarSign size={15}/> Registrar pago</button><button onClick={()=>handleSection('Tarifas')}><ClipboardList size={15}/> Tarifas</button></div>
       </section>
       {!supabaseConfigured && <div className="local-warning"><AlertTriangle size={16}/><span><strong>Modo local:</strong> la información se guarda solo en este navegador. Configura Supabase y accede con una cuenta antes de registrar datos reales.</span></div>}
@@ -635,7 +659,7 @@ export default function App() {
       {dialog === 'record' && moduleConfig && <form className="form-grid" onSubmit={submitRecord}>
         {section === 'Productos' && <div className="image-upload-panel full"><div className="product-image-preview">{productImagePreview ? <img src={productImagePreview} alt="Vista previa del producto"/> : <div><ImagePlus size={30}/><span>Imagen del producto</span></div>}</div><label className="image-upload-control"><ImagePlus size={16}/> Elegir imagen<input type="file" accept="image/*" onChange={e=>{const file=e.target.files?.[0];if(file){setProductImageFile(file);setProductImagePreview(URL.createObjectURL(file))}}}/></label><small>La imagen se optimiza automáticamente. Puedes dejarla vacía y añadirla después.</small></div>}
         {section === 'Miembros' && editing && <div className="member-modal-actions full"><button type="button" className="secondary-button" onClick={() => openMemberPayment(editing)}><CircleDollarSign size={15}/> Registrar pago</button><button type="button" className="secondary-button" onClick={() => void toggleMemberPause(editing)}>{editing.paused_at ? <Play size={15}/> : <Pause size={15}/>} {editing.paused_at ? 'Reactivar actividad' : 'Pausar actividad'}</button></div>}
-        {moduleConfig.fields.map(field => <FieldInput key={field.key} field={moduleConfig.table === 'products' && editing && field.key === 'stock' ? { ...field, disabled: true } : field} value={form[field.key] || ''} onChange={value => setForm(v => ({ ...v, [field.key]: value }))} />)}
+        {moduleConfig.fields.map(field => <FieldInput key={field.key} field={moduleConfig.table === 'products' && editing && field.key === 'stock' ? { ...field, disabled: true } : field} value={form[field.key] || (section === 'Miembros' && field.key === 'document_type' ? 'cedula_ciudadania' : '')} onChange={value => setForm(v => ({ ...v, [field.key]: value }))} />)}
         <div className="form-actions"><button type="button" className="secondary-button" onClick={() => setDialog(null)}>Cancelar</button><button disabled={busy} className="primary-button"><Check size={16}/>{busy ? 'Guardando…' : 'Guardar registro'}</button></div>
       </form>}
       {dialog === 'balance' && editing && <form className="form-grid" onSubmit={submitBalancePayment}><div className="balance-summary full"><strong>{memberName(editing.member_id)}</strong><span>Saldo pendiente: {formatMoney(Number(editing.amount || 0)-Number(editing.amount_paid || 0))}</span></div><FieldInput field={{ key: 'amount_paid', label: 'Abono recibido (COP)', type: 'number', required: true }} value={form.amount_paid || ''} onChange={v => setForm(f => ({ ...f, amount_paid: v }))}/><FieldInput field={{ key: 'method', label: 'Método de pago', type: 'select', options: methods }} value={form.method || 'cash'} onChange={v => setForm(f => ({ ...f, method: v }))}/><p className="form-hint full">Solo registra transferencias o Nequi después de confirmar el abono en la cuenta. El abono no debe superar el saldo pendiente.</p><FormActions busy={busy} onCancel={() => setDialog(null)}/></form>}
