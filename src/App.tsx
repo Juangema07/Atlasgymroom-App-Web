@@ -579,7 +579,6 @@ export default function App() {
     setBusy(false);
     if (error) throw new Error(error.message || 'No se pudieron guardar los permisos.');
     await refresh();
-    const {data}=await supabase.from('user_permission_history').select('user_id,permissions_version,changed_at').eq('user_id',userId).order('changed_at',{ascending:false});
     notify('Permisos actualizados. La persona deberá revisar y aceptar nuevamente los términos y permisos al volver a entrar.');
   }
 
@@ -1367,13 +1366,14 @@ function PermissionMatrix({value,onChange}:{value:Record<string,Record<string,bo
   </div>;
 }
 
-function UsersPage({ users,onCreate,busy,onUpdatePermissions,onToggleActive,acceptances }: {
+function UsersPage({ users,onCreate,busy,onUpdatePermissions,onToggleActive,acceptances,activeTermsVersion }: {
   users:Row[];
   onCreate:(payload:{full_name:string;email:string;role:'owner'|'cashier';permissions:Record<string,Record<string,boolean>>})=>Promise<void>;
   busy:boolean;
   onUpdatePermissions:(id:string,permissions:Record<string,Record<string,boolean>>,permissionsVersion:number)=>Promise<void>;
   onToggleActive:(user:Row)=>Promise<void>;
   acceptances:Row[];
+  activeTermsVersion:string;
 }) {
   const [fullName,setFullName]=useState('');
   const [email,setEmail]=useState('');
@@ -1433,7 +1433,7 @@ function UsersPage({ users,onCreate,busy,onUpdatePermissions,onToggleActive,acce
           const acceptance=acceptanceByUser.get(user.id);
           return <div className="users-list-row users-list-row-expanded" key={user.id}>
             <div className="users-avatar">{String(user.full_name||'U').slice(0,1).toUpperCase()}</div>
-            <div className="users-info"><strong>{user.full_name||'Usuario'}</strong><small>{user.email||user.id}</small><small>{acceptance ? 'Aceptó '+acceptance.terms_version+' · '+formatDate(acceptance.accepted_at) : 'Términos pendientes de aceptación'}</small></div>
+            <div className="users-info"><strong>{user.full_name||'Usuario'}</strong><small>{user.email||user.id}</small><small>{acceptance && acceptance.terms_version===activeTermsVersion && Number(acceptance.permissions_version||1)===Number(user.permissions_version||1) ? 'Aceptó '+acceptance.terms_version+' · '+formatDate(acceptance.accepted_at) : 'Debe aceptar términos/permisos vigentes'}</small></div>
             <span className={user.role==='owner'?'users-role admin':'users-role worker'}>{roleLabel(user.role)}</span>
             <span className={user.active===false?'users-state inactive':'users-state'}>{user.active===false?'Desactivado':'Activo'}</span>
             {user.role!=='owner'&&<div className="users-row-actions">
