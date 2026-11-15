@@ -6,7 +6,7 @@ Aplicación de administración para un gimnasio de una sede. Incluye panel, soci
 
 **Aviso de privacidad:** el repositorio está actualmente configurado como público. Antes de introducir datos personales, claves o información interna, cámbialo a privado desde GitHub Settings → General → Danger Zone → Change repository visibility. No se han subido claves ni datos de socios.
 
-- La interfaz y los flujos principales están implementados.
+- La interfaz y los flujos principales están implementados. La administración dispone de vistas de tabla y tarjetas, búsqueda y filtros rápidos para los módulos principales.
 - Con configuración Supabase: autenticación por usuario, base PostgreSQL, RLS y operaciones de negocio transaccionales.
 - Sin configurar Supabase: funciona en modo local usando IndexedDB del navegador. Los datos quedan únicamente en ese dispositivo y **no tienen autenticación multiusuario ni respaldo remoto**.
 - El modo offline está diseñado para conservar operaciones en un dispositivo y sincronizarlas al volver Internet. No habilita varios dispositivos desconectados compartiendo inventario en tiempo real.
@@ -61,11 +61,17 @@ El proyecto está configurado para `https://<usuario>.github.io/Atlasgymrun-App-
 
 La aplicación requiere que las variables de entorno estén presentes al compilar. Las claves públicas son visibles en el navegador por diseño; la protección real de datos depende de Auth y RLS.
 
-## 4. Respaldo local
+## 4. Aplicación Android independiente
+
+La aplicación Android empaqueta la interfaz compilada dentro del APK y no utiliza una URL remota como pantalla principal. La web y Android usan el mismo proyecto Supabase, autenticación, permisos RLS y registros; las operaciones creadas sin conexión se guardan en el dispositivo Android y se sincronizan al recuperar Internet. La app abre su propia interfaz local, pero necesita Internet para iniciar sesión por primera vez y sincronizar con otros dispositivos. Esta versión utiliza React + Capacitor (WebView nativo); no es todavía una interfaz Android nativa en Kotlin.
+
+Para compilar el APK, el workflow establece `CAPACITOR_BUILD=true` para usar rutas relativas y empaquetar todos los archivos de `dist` dentro de la aplicación. La web conserva el prefijo de GitHub Pages.
+
+## 5. Respaldo local
 
 Desde Configuración se puede exportar un archivo JSON de respaldo del almacenamiento local del dispositivo. El archivo puede contener datos personales: guárdalo en un lugar privado. La importación agrega/actualiza los registros del respaldo en el dispositivo actual.
 
-## 5. Reglas de operación
+## 6. Reglas de operación
 
 - Las escrituras de pagos, ventas, pases diarios, compras, gastos, caja y movimientos de stock quedan restringidas a funciones transaccionales de la base de datos; el cliente no recibe permisos de inserción directa para esos libros.
 - La creación de productos y su stock inicial se realiza mediante una función exclusiva del propietario. El stock posterior cambia mediante venta o compra.
@@ -79,7 +85,7 @@ Desde Configuración se puede exportar un archivo JSON de respaldo del almacenam
 - Para un apagón, la PWA no sustituye energía de respaldo; usar batería/UPS o el procedimiento manual del gimnasio.
 - Mantener el software anterior en paralelo hasta comparar pagos, ingresos, caja e inventario y aprobar restauración de respaldo.
 
-## 6. Verificación previa a producción
+## 7. Verificación previa a producción
 
 - Crear usuario propietario y un usuario de caja; verificar que RLS limita las acciones del segundo.
 - Crear plan y miembro; registrar pago completo, parcial y pendiente.
@@ -99,7 +105,7 @@ Desde Configuración se puede exportar un archivo JSON de respaldo del almacenam
 
 La aplicación no debe considerarse producción hasta completar estas pruebas en el proyecto Supabase real.
 
-## 7. Detalles de Tarifas y módulos extendidos
+## 8. Detalles de Tarifas y módulos extendidos
 
 - La ficha de Tarifas guarda tipo (normal/ticket), días, cantidad de tiquetes, permiso para modificar precio, horarios, días disponibles y campos de información tributaria mostrados en el sistema actual.
 - Los horarios/días y los campos tributarios se almacenan como configuración de la tarifa; esta versión todavía no genera factura electrónica ni calcula/declarara impuestos DIAN.
