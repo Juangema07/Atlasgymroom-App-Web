@@ -273,6 +273,69 @@ function configFor(section: Section, rows: Record<string, Row[]>): ModuleConfig 
   return config
 }
 
+
+const permissionKeyMap: Partial<Record<Section, string>> = {
+  'Inicio':'dashboard','Miembros':'members','Planes':'plans','Tarifas':'plans','Lista de Precios':'plans',
+  'Asistencia':'attendance','Pase diario':'day_pass','Pagos':'payments','Cuentas por Cobrar Pagos':'payments',
+  'Congelar Pagos':'members','Ventas':'sales','Notas Débito':'sales_adjustments','Notas Crédito':'sales_adjustments',
+  'Cuentas por Cobrar Ventas':'receivables_sales','Productos':'products','Compras':'purchases',
+  'Cuentas por Pagar Compras':'purchases','Gastos':'expenses','Tipos de Gastos':'expense_types',
+  'Ajuste Cartera':'receivables_adjustments','Categorías de Producto':'product_categories',
+  'Ajustes de Inventario':'inventory_adjustments','Regularizaciones de Inventario':'inventory_counts',
+  'Kardex de Inventario':'inventory_ledger','Evoluciones':'evolutions','Rutinas':'routines','Ejercicios':'exercises',
+  'Proveedores':'suppliers','Empleados':'employees','Documento Soporte':'supporting_documents','Notas Ajuste':'purchase_adjustments',
+  'Configuración de Reservaciones':'booking_settings','Clases':'classes','Reservaciones':'reservations',
+  'Mi Sucursal':'branch','Menú de Navegación':'navigation','Roles':'roles','Usuarios':'users',
+  'Configuración de Correos':'email_settings','Plantilla de Correos':'email_templates',
+  'Notificaciones':'notifications','Historial de Correos':'email_history','Caja':'cash','Informes':'reports',
+  'Auditoría':'audit','Configuración':'settings','Equipo':'employees',
+};
+function permissionKeyFor(section: Section): string { return permissionKeyMap[section] || 'misc' }
+
+const permissionGroups = [
+  { title:'Inicio y análisis', modules:[{key:'dashboard',label:'Panel de operaciones',actions:['view']},{key:'reports',label:'Informes',actions:['view']}] },
+  { title:'Clientes y asistencia', modules:[
+    {key:'members',label:'Miembros',actions:['view','create','update']},{key:'attendance',label:'Asistencia',actions:['view','create']},
+    {key:'day_pass',label:'Pases diarios',actions:['view','create']},{key:'evolutions',label:'Evoluciones',actions:['view','create','update']},
+    {key:'routines',label:'Rutinas',actions:['view','create','update']},{key:'exercises',label:'Ejercicios',actions:['view','create','update']},
+  ] },
+  { title:'Pagos y ventas', modules:[
+    {key:'plans',label:'Tarifas y listas de precios',actions:['view','create','update']},{key:'payments',label:'Pagos y cartera de pagos',actions:['view','create','update']},
+    {key:'sales',label:'Ventas',actions:['view','create','update']},{key:'receivables_sales',label:'Cartera de ventas',actions:['view','update']},
+    {key:'sales_adjustments',label:'Notas débito y crédito',actions:['view','create','update']},{key:'receivables_adjustments',label:'Ajustes de cartera',actions:['view','create','update']},
+  ] },
+  { title:'Productos e inventario', modules:[
+    {key:'products',label:'Productos',actions:['view','create','update']},{key:'product_categories',label:'Categorías',actions:['view','create','update']},
+    {key:'inventory_adjustments',label:'Ajustes de inventario',actions:['view','create']},{key:'inventory_counts',label:'Conteos y regularizaciones',actions:['view','create','update']},
+    {key:'inventory_ledger',label:'Kardex',actions:['view']},
+  ] },
+  { title:'Compras y egresos', modules:[
+    {key:'suppliers',label:'Proveedores',actions:['view','create','update']},{key:'purchases',label:'Compras y cuentas por pagar',actions:['view','create','update']},
+    {key:'supporting_documents',label:'Documentos soporte',actions:['view','create','update']},{key:'purchase_adjustments',label:'Notas de ajuste',actions:['view','create','update']},
+    {key:'expenses',label:'Gastos',actions:['view','create','update']},{key:'expense_types',label:'Tipos de gastos',actions:['view','create','update']},
+  ] },
+  { title:'Caja y agenda', modules:[
+    {key:'cash',label:'Caja',actions:['view','create','close']},{key:'booking_settings',label:'Configuración de reservaciones',actions:['view','create','update']},
+    {key:'classes',label:'Clases',actions:['view','create','update']},{key:'reservations',label:'Reservaciones',actions:['view','create','update']},
+  ] },
+  { title:'Administración', modules:[
+    {key:'employees',label:'Empleados y equipo',actions:['view','create','update']},{key:'branch',label:'Mi sucursal',actions:['view','update']},
+    {key:'navigation',label:'Menú de navegación',actions:['view','update']},{key:'roles',label:'Roles',actions:['view','update']},
+    {key:'users',label:'Usuarios',actions:['view','create','update']},{key:'audit',label:'Auditoría',actions:['view']},
+    {key:'settings',label:'Configuración',actions:['view','update']},
+  ] },
+  { title:'Comunicaciones', modules:[
+    {key:'email_settings',label:'Configuración de correos',actions:['view']},{key:'email_templates',label:'Plantillas de correos',actions:['view','create','update']},
+    {key:'notifications',label:'Notificaciones internas',actions:['view','create','update']},{key:'email_history',label:'Historial de correos',actions:['view']},
+  ] },
+];
+const actionLabels: Record<string,string> = {view:'Consultar',create:'Crear',update:'Editar',close:'Cerrar'};
+const defaultCashierPermissions: Record<string,Record<string,boolean>> = {
+  dashboard:{view:true},members:{view:true,create:true,update:true},attendance:{view:true,create:true},
+  day_pass:{view:true,create:true},payments:{view:true,create:true,update:true},
+  sales:{view:true,create:true,update:true},products:{view:true},cash:{view:true,create:true,close:true},reports:{view:true},
+};
+
 export default function App() {
   const [section, setSection] = useState<Section>('Inicio')
   const [menuOpen, setMenuOpen] = useState(false)
@@ -280,6 +343,13 @@ export default function App() {
   const [authLoading, setAuthLoading] = useState(Boolean(supabaseConfigured))
   const [recoveryMode, setRecoveryMode] = useState(false)
   const [profile, setProfile] = useState<Row | null>(null)
+  const [profileLoading, setProfileLoading] = useState(Boolean(supabaseConfigured));
+  const [termsRecord, setTermsRecord] = useState<Row | null>(null);
+  const [termsStatus, setTermsStatus] = useState<'loading'|'required'|'accepted'|'error'>(supabaseConfigured ? 'loading' : 'accepted');
+  const [termsError, setTermsError] = useState('');
+  const [termsBusy, setTermsBusy] = useState(false);
+  const [userAcceptances, setUserAcceptances] = useState<Row[]>([]);
+
   const [rows, setRows] = useState<Record<string, Row[]>>({})
   const [search, setSearch] = useState('')
   const [attendanceLookup, setAttendanceLookup] = useState('')
@@ -326,21 +396,77 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    if (session?.user) {
-      supabase?.from('profiles').select('*').eq('id', session.user.id).maybeSingle().then(({ data }) => setProfile(data))
-      void syncPending().then(() => refresh())
-    } else if (!supabaseConfigured) {
-      setProfile({ id: 'local-owner', full_name: 'Administrador local', role: 'owner', active: true })
-      void (async () => {
-        const currentPlans = await listRows('plans')
-        for (const plan of defaultTariffs) if (!currentPlans.some(row => row.name.toLowerCase() === plan.name.toLowerCase())) await saveRow('plans', { ...plan, created_by: null, created_at: nowIso(), updated_at: nowIso() })
-        await refresh()
-      })()
-    } else {
-      setRows({})
-      setProfile(null)
-    }
-  }, [session, refresh])
+    let cancelled = false;
+    const loadAccount = async () => {
+      if (session?.user && supabase) {
+        setProfileLoading(true);
+        setTermsStatus('loading');
+        setTermsError('');
+        setProfile(null);
+        const { data: profileData, error: profileError } = await supabase
+          .from('profiles').select('*').eq('id', session.user.id).maybeSingle();
+        if (cancelled) return;
+        if (profileError || !profileData) {
+          setProfileLoading(false);
+          setTermsStatus('error');
+          setTermsError(profileError?.message || 'La cuenta no tiene un perfil de acceso asociado.');
+          return;
+        }
+        setProfile(profileData);
+        setProfileLoading(false);
+        if (profileData.active === false) {
+          setTermsStatus('accepted');
+          return;
+        }
+        const { data: activeTerms, error: termsQueryError } = await supabase
+          .from('app_terms_versions').select('version,title,body,published_at').eq('active', true).maybeSingle();
+        if (cancelled) return;
+        if (termsQueryError || !activeTerms) {
+          setTermsStatus('error');
+          setTermsError(termsQueryError?.message || 'No hay una versión activa de los términos.');
+          return;
+        }
+        setTermsRecord(activeTerms);
+        const { data: acceptance, error: acceptanceError } = await supabase
+          .from('user_terms_acceptances').select('id,terms_version,accepted_at')
+          .eq('user_id', session.user.id).eq('terms_version', activeTerms.version).maybeSingle();
+        if (cancelled) return;
+        if (acceptanceError) {
+          setTermsStatus('error');
+          setTermsError(acceptanceError.message);
+          return;
+        }
+        setTermsStatus(acceptance ? 'accepted' : 'required');
+        if (profileData.role === 'owner') {
+          const { data: allAcceptances } = await supabase
+            .from('user_terms_acceptances').select('user_id,terms_version,accepted_at')
+            .order('accepted_at', { ascending:false });
+          if (!cancelled && allAcceptances) setUserAcceptances(allAcceptances as Row[]);
+        }
+        if (acceptance) void syncPending().then(() => refresh());
+      } else if (!supabaseConfigured) {
+        setProfile({ id:'local-owner',full_name:'Administrador local',role:'owner',active:true });
+        setProfileLoading(false);
+        setTermsStatus('accepted');
+        void (async () => {
+          const currentPlans = await listRows('plans');
+          for (const plan of defaultTariffs) if (!currentPlans.some(row => row.name.toLowerCase() === plan.name.toLowerCase())) {
+            await saveRow('plans', { ...plan, created_by:null, created_at:nowIso(), updated_at:nowIso() });
+          }
+          await refresh();
+        })();
+      } else {
+        setRows({});
+        setProfile(null);
+        setProfileLoading(false);
+        setTermsRecord(null);
+        setTermsStatus('loading');
+        setUserAcceptances([]);
+      }
+    };
+    void loadAccount();
+    return () => { cancelled = true; };
+  }, [session, refresh]);
 
   useEffect(() => {
     const onOnline = () => { void sync() }
