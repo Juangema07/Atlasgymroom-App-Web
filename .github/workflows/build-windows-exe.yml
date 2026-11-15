@@ -23,7 +23,7 @@ jobs:
         run: npm run app:desktop:dist -- --publish never
       - uses: actions/upload-artifact@v4
         with:
-          name: Atlasgymroom-Windows-EXE
+          name: Atlasgymrun-Windows-EXE
           path: release/*.exe
           if-no-files-found: error
           retention-days: 30
@@ -31,7 +31,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: windows-v0.2.0
-          name: Atlasgymroom Windows v0.2.0
+          name: Atlasgymrun Windows v0.2.0
           body: Instalador de escritorio para Windows x64. Se conecta a la aplicación web alojada y requiere conexión a internet.
           files: release/*.exe
           make_latest: false
