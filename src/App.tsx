@@ -578,7 +578,7 @@ export default function App() {
   async function backup() {
     const json = await exportLocalBackup()
     const url = URL.createObjectURL(new Blob([json], { type: 'application/json' }))
-    const anchor = document.createElement('a'); anchor.href = url; anchor.download = `atlasgymroom-respaldo-${today()}.json`; anchor.click(); URL.revokeObjectURL(url)
+    const anchor = document.createElement('a'); anchor.href = url; anchor.download = `atlasgymrun-respaldo-${today()}.json`; anchor.click(); URL.revokeObjectURL(url)
   }
   async function restore(file?: File) {
     if (!file) return
@@ -627,7 +627,7 @@ export default function App() {
 
   return <div className="app-shell">
     <aside className={`sidebar ${menuOpen ? 'sidebar-open' : ''}`}>
-      <div className="brand"><div className="brand-mark"><Dumbbell size={21}/></div><div><strong>ATLAS<span>GYMROOM</span></strong><small>GESTIÓN DE GIMNASIO</small></div><button className="mobile-close" onClick={() => setMenuOpen(false)}><X/></button></div>
+      <div className="brand"><div className="brand-mark"><Dumbbell size={21}/></div><div><strong>ATLAS<span>GYMRUN</span></strong><small>GESTIÓN DE GIMNASIO</small></div><button className="mobile-close" onClick={() => setMenuOpen(false)}><X/></button></div>
       <div className="workspace-label">MENÚ PRINCIPAL</div>
       <nav className="grouped-navigation">{navGroups.filter(group => !group.ownerOnly || isOwner).map(({ label, icon: Icon, target, items }) => items ? <div className="nav-group" key={label}>
         <button className={items.some(item => item.target === section) ? 'nav-item nav-parent active-parent' : 'nav-item nav-parent'} onClick={() => setExpandedGroups(v => ({ ...v, [label]: !v[label] }))}><Icon size={18}/><span>{label}</span><span className="nav-chevron">{expandedGroups[label] ? '⌄' : '›'}</span></button>
@@ -672,7 +672,7 @@ export default function App() {
       </div>
     </main>
 
-    {dialog && dialog !== 'cash' && <Modal title={dialogTitle(dialog, editing)} onClose={() => setDialog(null)}>
+    {dialog && dialog !== 'cash' && <Modal variant={dialog === 'record' ? 'drawer' : 'center'} title={dialogTitle(dialog, editing)} onClose={() => setDialog(null)}>
       {dialog === 'record' && moduleConfig && <form className="form-grid" onSubmit={submitRecord}>
         {section === 'Productos' && <div className="image-upload-panel full"><div className="product-image-preview">{productImagePreview ? <img src={productImagePreview} alt="Vista previa del producto"/> : <div><ImagePlus size={30}/><span>Imagen del producto</span></div>}</div><label className="image-upload-control"><ImagePlus size={16}/> Elegir imagen<input type="file" accept="image/*" onChange={e=>{const file=e.target.files?.[0];if(file){setProductImageFile(file);setProductImagePreview(URL.createObjectURL(file))}}}/></label><small>La imagen se optimiza automáticamente. Puedes dejarla vacía y añadirla después.</small></div>}
         {section === 'Miembros' && editing && <div className="member-modal-actions full"><button type="button" className="secondary-button" onClick={() => openMemberPayment(editing)}><CircleDollarSign size={15}/> Registrar pago</button><button type="button" className="secondary-button" onClick={() => void toggleMemberPause(editing)}>{editing.paused_at ? <Play size={15}/> : <Pause size={15}/>} {editing.paused_at ? 'Reactivar actividad' : 'Pausar actividad'}</button></div>}
@@ -838,6 +838,9 @@ function PlaceholderModule({ title }: { title: Section }) {
 function DataModule({ config, rows, isOwner, search, setSearch, onCreate, onEdit, onTogglePause, onMemberPayment, onCollectBalance, memberName, productName, planName }: { config: ModuleConfig; rows: Row[]; isOwner:boolean; search:string; setSearch:(v:string)=>void; onCreate:()=>void; onEdit:(row:Row)=>void; onTogglePause:(row:Row)=>void; onMemberPayment:(row:Row)=>void; onCollectBalance:(row:Row)=>void; memberName:(id:unknown)=>string; productName:(id:unknown)=>string; planName:(id:unknown)=>string }) {
   const [layout,setLayout]=useState<'table'|'cards'>('table')
   const [quickFilter,setQuickFilter]=useState('all')
+  const [sort,setSort]=useState<{key:string;direction:'asc'|'desc'}>({key:'',direction:'asc'})
+  useEffect(()=>{setQuickFilter('all');setSort({key:'',direction:'asc'})},[config.table])
+
   const valueFor = (row:Row,key:string) => {
     const value = row[key]
     if (key === 'member_id') return memberName(value)
@@ -853,39 +856,62 @@ function DataModule({ config, rows, isOwner, search, setSearch, onCreate, onEdit
     if (key === 'id') return String(value || '').slice(0,8)
     return value == null || value === '' ? '—' : String(value)
   }
+
   const canEdit = config.table === 'members' || config.table === 'gym_records' || (isOwner && (config.table === 'plans' || config.table === 'products'))
   const showActions = canEdit || config.table === 'payments'
   const filterOptions = config.table === 'members'
-    ? [{value:'all',label:'Todos'},{value:'active',label:'Activos'},{value:'paused',label:'Pausados'},{value:'inactive',label:'Inactivos'}]
+    ? [{value:'all',label:'Todos'},{value:'active',label:'Activos'},{value:'expiring',label:'Por vencer'},{value:'expired',label:'Vencidos'},{value:'paused',label:'Pausados'},{value:'inactive',label:'Inactivos'}]
     : config.table === 'payments'
       ? [{value:'all',label:'Todos'},{value:'pending',label:'Con saldo'},{value:'paid',label:'Pagados'}]
       : config.table === 'plans'
         ? [{value:'all',label:'Todas'},{value:'active',label:'Activas'},{value:'inactive',label:'Inactivas'}]
         : []
+
+  const memberIsActive = (row:Row) => row.status === 'active' && !row.paused_at && (!row.end_date || String(row.end_date) >= today())
   const visibleRows = rows.filter(row => {
     if (quickFilter === 'all') return true
     if (quickFilter === 'paused') return Boolean(row.paused_at)
-    if (quickFilter === 'active') return row.status === 'active' || row.active === true
-    if (quickFilter === 'inactive') return row.status === 'inactive' || row.active === false
+    if (quickFilter === 'active') return config.table === 'members' ? memberIsActive(row) : row.status === 'active' || row.active === true
+    if (quickFilter === 'expiring') return config.table === 'members' && memberIsActive(row) && Boolean(row.end_date) && String(row.end_date) <= datePlusDays(today(), 7)
+    if (quickFilter === 'expired') return config.table === 'members' && !row.paused_at && Boolean(row.end_date) && String(row.end_date) < today()
+    if (quickFilter === 'inactive') return !row.paused_at && (row.status === 'inactive' || row.active === false)
     if (quickFilter === 'pending') return Number(row.amount || 0) > Number(row.amount_paid || 0) && row.status !== 'voided'
     if (quickFilter === 'paid') return row.status === 'paid' || Number(row.amount || 0) <= Number(row.amount_paid || 0)
     return true
   })
+
+  const orderedRows = sort.key ? [...visibleRows].sort((a,b) => {
+    const left = a[sort.key], right = b[sort.key]
+    let result = 0
+    if (sort.key.includes('date') || sort.key.endsWith('_at')) {
+      const leftTime = left ? new Date(String(left)).getTime() : 0
+      const rightTime = right ? new Date(String(right)).getTime() : 0
+      result = leftTime - rightTime
+    } else if (['amount','amount_paid','price','cost','total','total_amount','stock','min_stock','duration_days','ticket_quantity'].includes(sort.key)) {
+      result = Number(left || 0) - Number(right || 0)
+    } else {
+      result = String(valueFor(a,sort.key) ?? '').localeCompare(String(valueFor(b,sort.key) ?? ''),'es',{numeric:true,sensitivity:'base'})
+    }
+    return sort.direction === 'asc' ? result : -result
+  }) : visibleRows
+
+  const toggleSort = (key:string) => setSort(current => ({key,direction:current.key===key && current.direction==='asc'?'desc':'asc'}))
   const actionsFor = (row:Row) => <>{canEdit && <button className="table-action" onClick={()=>onEdit(row)} title="Editar registro"><Pencil size={14}/></button>}{config.table==='members' && <><button className="table-action" onClick={()=>onMemberPayment(row)} title="Registrar pago"><CircleDollarSign size={14}/></button><button className="table-action" onClick={()=>onTogglePause(row)} title={row.paused_at?'Reactivar actividad':'Pausar actividad'}>{row.paused_at?<Play size={14}/>:<Pause size={14}/>}</button></>}{config.table==='payments' && Number(row.amount||0)>Number(row.amount_paid||0) && row.status!=='voided' && <button className="table-action" onClick={()=>onCollectBalance(row)} title="Cobrar saldo">Abonar</button>}</>
+
   return <><div className="module-heading"><div><div className="eyebrow">GESTIÓN</div><h1>{config.title}</h1><p>{config.description}</p></div>{config.fields.length > 0 && config.title !== 'Congelar pagos' && (config.table !== 'plans' && config.table !== 'products' || isOwner) && <button className="primary-button" onClick={onCreate}><Plus size={16}/> Nuevo registro</button>}{config.table === 'day_passes' && <button className="primary-button" onClick={onCreate}><Plus size={16}/> Nuevo pase</button>}{config.table === 'payments' && <button className="primary-button" onClick={onCreate}><Plus size={16}/> Registrar pago</button>}{config.table === 'sales' && <button className="primary-button" onClick={onCreate}><Plus size={16}/> Nueva venta</button>}{config.table === 'purchases' && <button className="primary-button" onClick={onCreate}><Plus size={16}/> Registrar compra</button>}{config.table === 'expenses' && <button className="primary-button" onClick={onCreate}><Plus size={16}/> Registrar gasto</button>}</div>
     <section className="panel data-panel admin-data-panel">
       <div className="admin-data-toolbar">
-        <div className="admin-data-summary"><strong>{visibleRows.length}</strong><span>de {rows.length} registro(s)</span></div>
+        <div className="admin-data-summary"><strong>{orderedRows.length}</strong><span>de {rows.length} registro(s)</span></div>
         <label className="search-box"><Search size={16}/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar por nombre, documento, valor…"/></label>
+        {search.trim() && <button type="button" className="admin-clear-search" onClick={()=>setSearch('')}><X size={14}/> Limpiar</button>}
         <div className="admin-view-switch" aria-label="Tipo de vista"><button type="button" className={layout==='table'?'selected':''} onClick={()=>setLayout('table')}>Tabla</button><button type="button" className={layout==='cards'?'selected':''} onClick={()=>setLayout('cards')}>Tarjetas</button></div>
       </div>
       {filterOptions.length>0 && <div className="admin-quick-filters">{filterOptions.map(option=><button type="button" key={option.value} className={quickFilter===option.value?'selected':''} onClick={()=>setQuickFilter(option.value)}>{option.label}</button>)}</div>}
-      {visibleRows.length ? layout==='table' ? <div className="table-wrap"><table><thead><tr>{config.columns.map(c=><th key={c.key}>{c.label}</th>)}{showActions && <th>Acciones</th>}</tr></thead><tbody>{visibleRows.map(row=><tr key={row.id}>{config.columns.map(c=><td key={c.key}>{valueFor(row,c.key)}</td>)}{showActions && <td className="action-cell">{actionsFor(row)}</td>}</tr>)}</tbody></table></div> : <div className="admin-record-grid">{visibleRows.map(row=><article className="admin-record-card" key={row.id}><div className="admin-record-card-heading"><strong>{valueFor(row,config.columns[0]?.key || 'id')}</strong>{config.columns[1]&&<small>{config.columns[1].label}: {valueFor(row,config.columns[1].key)}</small>}</div><dl>{config.columns.slice(2).map(column=><div key={column.key}><dt>{column.label}</dt><dd>{valueFor(row,column.key)}</dd></div>)}</dl>{showActions&&<div className="admin-record-actions">{actionsFor(row)}</div>}</article>)}</div> : <Empty text={search || quickFilter!=='all' ? 'No hay registros que coincidan con estos filtros.' : 'Todavía no hay registros en este módulo.'}/>}
+      {orderedRows.length ? layout==='table' ? <div className="table-wrap"><table><thead><tr>{config.columns.map(c=><th key={c.key} aria-sort={sort.key===c.key?(sort.direction==='asc'?'ascending':'descending'):'none'}><button type="button" className="table-sort-button" onClick={()=>toggleSort(c.key)}>{c.label}<span>{sort.key===c.key?(sort.direction==='asc'?'↑':'↓'):'↕'}</span></button></th>)}{showActions && <th>Acciones</th>}</tr></thead><tbody>{orderedRows.map(row=><tr key={row.id}>{config.columns.map(c=><td key={c.key}>{valueFor(row,c.key)}</td>)}{showActions && <td className="action-cell">{actionsFor(row)}</td>}</tr>)}</tbody></table></div> : <div className="admin-record-grid">{orderedRows.map(row=><article className="admin-record-card" key={row.id}><div className="admin-record-card-heading"><strong>{valueFor(row,config.columns[0]?.key || 'id')}</strong>{config.columns[1]&&<small>{config.columns[1].label}: {valueFor(row,config.columns[1].key)}</small>}</div><dl>{config.columns.slice(2).map(column=><div key={column.key}><dt>{column.label}</dt><dd>{valueFor(row,column.key)}</dd></div>)}</dl>{showActions&&<div className="admin-record-actions">{actionsFor(row)}</div>}</article>)}</div> : <Empty text={search || quickFilter!=='all' ? 'No hay registros que coincidan con estos filtros.' : 'Todavía no hay registros en este módulo.'}/>}
     </section>
     {config.table==='products' && <div className="module-footnote"><AlertTriangle size={14}/> Los ajustes directos de existencias deben justificarse. Próxima mejora: pantalla dedicada para ajustes auditados.</div>}
   </>
 }
-
 function CashPage({ session, sessions, movements, profiles, onOpen, onClose, onPrint }: { session?:Row; sessions:Row[]; movements:Row[]; profiles:Row[]; onOpen:()=>void; onClose:()=>void; onPrint:(row:Row)=>void }) {
   const currentMovements = session ? movements.filter(m=>m.cash_session_id===session.id) : []
   const cashIncome = currentMovements.filter(m=>m.method==='cash'&&m.direction==='income').reduce((s,m)=>s+Number(m.amount),0)
@@ -964,7 +990,7 @@ function UsersPage({ users, onCreate, busy }: { users:Row[]; onCreate:(payload:{
 function Stat({icon,label,value,change,tint}:{icon:ReactNode;label:string;value:string;change:string;tint:string}){return <div className="stat-card"><div className={`stat-icon ${tint}`}>{icon}</div><span className="stat-label">{label}</span><strong className="stat-value">{value}</strong><small className="neutral">{change}</small></div>}
 function Quick({icon,label,onClick}:{icon:ReactNode;label:string;onClick:()=>void}){return <button className="quick-action" onClick={onClick}><span>{icon}</span><strong>{label}</strong><ArrowUpRight size={15}/></button>}
 function Empty({text}:{text:string}){return <div className="empty-state"><ClipboardList size={24}/><p>{text}</p></div>}
-function Modal({title,children,onClose}:{title:string;children:ReactNode;onClose:()=>void}){return <div className="modal-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)onClose()}}><section className="modal"><div className="modal-heading"><h2>{title}</h2><button onClick={onClose}><X size={18}/></button></div>{children}</section></div>}
+function Modal({title,children,onClose,variant='center'}:{title:string;children:ReactNode;onClose:()=>void;variant?:'center'|'drawer'}){const drawer=variant==='drawer';return <div className={drawer?'modal-backdrop modal-drawer-backdrop':'modal-backdrop'} onMouseDown={e=>{if(e.target===e.currentTarget)onClose()}}><section className={drawer?'modal modal-drawer':'modal'}><div className="modal-heading"><h2>{title}</h2><button onClick={onClose} aria-label="Cerrar"><X size={18}/></button></div>{children}</section></div>}
 function FieldInput({field,value,onChange}:{field:Field;value:string;onChange:(v:string)=>void}){return <label className={field.type==='textarea'?'field full':'field'}>{field.label}{field.type==='select'?<select disabled={field.disabled} value={value} onChange={e=>onChange(e.target.value)} required={field.required}><option value="">Seleccionar…</option>{field.options?.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}</select>:field.type==='textarea'?<textarea disabled={field.disabled} value={value} onChange={e=>onChange(e.target.value)} placeholder={field.placeholder} required={field.required}/>:<input disabled={field.disabled} type={field.type||'text'} value={value} onChange={e=>onChange(e.target.value)} placeholder={field.placeholder} required={field.required} min={field.type==='number'?0:undefined}/>}</label>}
 function FormActions({busy,onCancel}:{busy:boolean;onCancel:()=>void}){return <div className="form-actions"><button type="button" className="secondary-button" onClick={onCancel}>Cancelar</button><button disabled={busy} className="primary-button"><Check size={16}/>{busy?'Procesando…':'Confirmar registro'}</button></div>}
 async function compressProductImage(file:File):Promise<Blob>{
