@@ -480,8 +480,13 @@ export default function App() {
   const memberOptions = useMemo(() => (rows.members || []).map(m => ({ value: m.id, label: m.full_name })), [rows.members])
   const productOptions = useMemo(() => (rows.products || []).filter(p => p.active !== false).map(p => ({ value: p.id, label: `${p.name} · ${formatMoney(p.price)} · Stock ${p.stock}` })), [rows.products])
   const activeSession = (rows.cash_sessions || []).find(s => s.status === 'open')
-  const isOwner = profile?.role === 'owner'
-  const moduleConfig = configFor(section, rows)
+  const isOwner = profile?.role === 'owner' && profile?.active !== false
+  const canModule = (target: Section, action: string = 'view') => {
+    if (profile?.active === false) return false;
+    if (profile?.role === 'owner') return true;
+    return profile?.permissions?.[permissionKeyFor(target)]?.[action] === true;
+  };
+  const moduleConfig = canModule(section, 'view') ? configFor(section, rows) : null
   const moduleRows = moduleConfig ? (rows[moduleConfig.table] || []) : []
   const scopedRows = moduleConfig?.table === 'gym_records' ? moduleRows.filter(row => row.record_type === section) : section === 'Cuentas por Cobrar Pagos' ? moduleRows.filter(row => Number(row.amount || 0) > Number(row.amount_paid || 0) && row.status !== 'voided') : section === 'Cuentas por Cobrar Ventas' ? moduleRows.filter(row => Number(row.total || 0) > Number(row.amount_paid || 0) && row.status !== 'voided') : section === 'Cuentas por Pagar Compras' ? moduleRows.filter(row => Number(row.total_amount || 0) > Number(row.amount_paid || 0)) : section === 'Congelar Pagos' ? moduleRows.filter(row => Boolean(row.paused_at)) : moduleRows
   const filteredRows = scopedRows.filter(row => JSON.stringify(row).toLowerCase().includes(search.toLowerCase()))
@@ -864,9 +869,9 @@ export default function App() {
     <aside className={`sidebar ${menuOpen ? 'sidebar-open' : ''}`}>
       <div className="brand"><div className="brand-mark"><Dumbbell size={21}/></div><div><strong>ATLAS<span>GYMRUN</span></strong><small>GESTIÓN DE GIMNASIO</small></div><button className="mobile-close" onClick={() => setMenuOpen(false)}><X/></button></div>
       <div className="workspace-label">MENÚ PRINCIPAL</div>
-      <nav className="grouped-navigation">{navGroups.filter(group => !group.ownerOnly || isOwner).map(({ label, icon: Icon, target, items }) => items ? <div className="nav-group" key={label}>
+      <nav className="grouped-navigation">{navGroups.filter(group => group.items ? group.items.some(item => canModule(item.target, 'view') && (item.target !== 'Usuarios' || isOwner)) : Boolean(group.target && canModule(group.target, 'view'))).map(({ label, icon: Icon, target, items }) => items ? <div className="nav-group" key={label}>
         <button className={items.some(item => item.target === section) ? 'nav-item nav-parent active-parent' : 'nav-item nav-parent'} onClick={() => setExpandedGroups(v => ({ ...v, [label]: !v[label] }))}><Icon size={18}/><span>{label}</span><span className="nav-chevron">{expandedGroups[label] ? '⌄' : '›'}</span></button>
-        {expandedGroups[label] && <div className="nav-submenu">{items.map(item => <button key={item.target} className={section === item.target ? 'nav-subitem active' : 'nav-subitem'} onClick={() => handleSection(item.target)}><span className="nav-dash">–</span>{item.label}{item.target === 'Miembros' && <b className="nav-count">{members.length}</b>}</button>)}</div>}
+        {expandedGroups[label] && <div className="nav-submenu">{items.filter(item => canModule(item.target, 'view') && (item.target !== 'Usuarios' || isOwner)).map(item => <button key={item.target} className={section === item.target ? 'nav-subitem active' : 'nav-subitem'} onClick={() => handleSection(item.target)}><span className="nav-dash">–</span>{item.label}{item.target === 'Miembros' && <b className="nav-count">{members.length}</b>}</button>)}</div>}
       </div> : <button key={label} className={section === target ? 'nav-item active' : 'nav-item'} onClick={() => handleSection(target!)}><Icon size={18}/><span>{label}</span></button>)}</nav>
       {isOwner && <><div className="workspace-label admin-label">PROGRAMA</div>
       <nav><button className="nav-item" onClick={() => handleSection('Configuración')}><Shield size={18}/><span>Configuración del sistema</span></button><button className="nav-item" onClick={() => notify('El buzón de sugerencias estará disponible en una próxima versión.')}><ClipboardList size={18}/><span>Buzón de sugerencias</span></button></nav></>}
