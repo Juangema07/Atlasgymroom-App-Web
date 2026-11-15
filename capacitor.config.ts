@@ -4,13 +4,8 @@ const config: CapacitorConfig = {
   appId: 'com.atlasgymrun.admin',
   appName: 'Atlasgymrun',
   webDir: 'dist',
-  server: {
-    // The native app is a companion window to the hosted web system.
-    // Shared records always come from the same web backend.
-    url: 'https://juangema07.github.io/Atlasgymrun-App-Web/',
-    cleartext: false,
-    androidScheme: 'https',
-  },
+  // No remote server.url: Android packages and runs its own built interface.
+  // Supabase remains the shared backend for web and Android.
   android: { allowMixedContent: false },
 }
 

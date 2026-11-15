@@ -28,7 +28,12 @@ jobs:
       - run: npm install
         env:
           ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
-      - run: npm run build
+      - name: Build bundled Android interface
+        run: npm run build
+        env:
+          CAPACITOR_BUILD: 'true'
+          VITE_SUPABASE_URL: https://zkjzdbwbkoxfsgzqzrqf.supabase.co
+          VITE_SUPABASE_PUBLISHABLE_KEY: sb_publishable_4FHQKbOeCK-IgJ6ncxa99Q_bl0-oZMY
       - run: npx cap add android
       - run: npx cap sync android
       - name: Build APK
