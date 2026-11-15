@@ -89,7 +89,7 @@ Deno.serve(async (req: Request) => {
   const { error: profileError } = await adminClient
     .from("profiles")
     .upsert(
-      { id: newUser.id, full_name: fullName, role, active: true },
+      { id: newUser.id, full_name: fullName, email, role, active: true },
       { onConflict: "id" },
     );
 
