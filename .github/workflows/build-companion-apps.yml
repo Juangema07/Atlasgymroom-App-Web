@@ -52,7 +52,7 @@ jobs:
       - run: npm run app:desktop:dist
       - uses: actions/upload-artifact@v4
         with:
-          name: atlasgymroom-windows-x64-exe
+          name: atlasgymrun-windows-x64-exe
           path: release/*.exe
           if-no-files-found: error
           retention-days: 14
