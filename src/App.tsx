@@ -1302,30 +1302,106 @@ function SettingsPage({ onBackup, onRestore, onResetDemo, onSeed, busy }: { onBa
   return <><div className="module-heading"><div><div className="eyebrow">SISTEMA</div><h1>Configuración</h1><p>Respaldo, continuidad y entorno de pruebas.</p></div></div><div className="content-grid"><section className="panel setting-card"><div className="setting-icon"><FileDown/></div><h2>Respaldo local</h2><p>Descarga un archivo JSON con los datos guardados en este navegador. El respaldo puede contener información personal; protégelo.</p><button className="primary-button" onClick={onBackup}><Download size={16}/> Exportar respaldo</button></section><section className="panel setting-card"><div className="setting-icon"><FileUp/></div><h2>Restaurar respaldo</h2><p>Importa un respaldo previamente exportado en el dispositivo actual. Los registros se agregan o actualizan.</p><button className="secondary-button" onClick={onRestore}><FileUp size={16}/> Seleccionar archivo</button></section></div><section className="panel setting-card"><div className="setting-icon"><Activity/></div><h2>Modo de demostración</h2><p>Carga registros ficticios para probar miembros, pagos, asistencias, productos, ventas, compras, gastos e informes. Quedan identificados como DEMO y pueden limpiarse sin tocar los datos reales.</p><button className="primary-button" disabled={busy} onClick={onSeed}><Plus size={16}/> {busy?"Procesando…":"Cargar datos de demostración"}</button><button className="secondary-button" disabled={busy} onClick={onResetDemo}>Limpiar datos DEMO</button></section><section className="panel security-panel"><Shield/><div><h2>Seguridad y acceso</h2><p>Las cuentas son individuales. Los administradores invitan usuarios desde el módulo Usuarios y asignan el nivel Administrador o Trabajador. No compartas contraseñas ni claves secretas.</p></div></section></>
 }
 function AccessDenied(){return <div className="panel access-denied"><Shield size={25}/><h2>Acceso reservado al propietario</h2><p>Este módulo contiene información administrativa. Solicita al propietario que revise los permisos de tu cuenta.</p></div>}
-function UsersPage({ users, onCreate, busy }: { users:Row[]; onCreate:(payload:{full_name:string;email:string;role:'owner'|'cashier'})=>Promise<void>; busy:boolean }) {
-  const [fullName,setFullName]=useState('')
-  const [email,setEmail]=useState('')
-  const [role,setRole]=useState<'owner'|'cashier'>('cashier')
-  const [feedback,setFeedback]=useState('')
-  const [error,setError]=useState(false)
+function PermissionMatrix({value,onChange}:{value:Record<string,Record<string,boolean>>;onChange:(next:Record<string,Record<string,boolean>>)=>void}) {
+  function setPermission(moduleKey:string,action:string,enabled:boolean) {
+    onChange({...value,[moduleKey]:{...(value[moduleKey]||{}),[action]:enabled}});
+  }
+  return <div className="permission-matrix">
+    {permissionGroups.map(group=><section className="permission-group" key={group.title}>
+      <h3>{group.title}</h3>
+      {group.modules.map(module=><div className="permission-row" key={module.key}>
+        <strong>{module.label}</strong>
+        <div>{module.actions.map(action=><label key={action}>
+          <input type="checkbox" checked={value[module.key]?.[action]===true} onChange={event=>setPermission(module.key,action,event.target.checked)}/>
+          <span>{actionLabels[action]||action}</span>
+        </label>)}</div>
+      </div>)}
+    </section>)}
+  </div>;
+}
+
+function UsersPage({ users,onCreate,busy,onUpdatePermissions,onToggleActive,acceptances }: {
+  users:Row[];
+  onCreate:(payload:{full_name:string;email:string;role:'owner'|'cashier';permissions:Record<string,Record<string,boolean>>})=>Promise<void>;
+  busy:boolean;
+  onUpdatePermissions:(id:string,permissions:Record<string,Record<string,boolean>>)=>Promise<void>;
+  onToggleActive:(user:Row)=>Promise<void>;
+  acceptances:Row[];
+}) {
+  const [fullName,setFullName]=useState('');
+  const [email,setEmail]=useState('');
+  const [role,setRole]=useState<'owner'|'cashier'>('cashier');
+  const [permissions,setPermissions]=useState<Record<string,Record<string,boolean>>>(()=>JSON.parse(JSON.stringify(defaultCashierPermissions)));
+  const [selectedUser,setSelectedUser]=useState<Row|null>(null);
+  const [editPermissions,setEditPermissions]=useState<Record<string,Record<string,boolean>>>({});
+  const [feedback,setFeedback]=useState('');
+  const [error,setError]=useState(false);
   async function submit(event:FormEvent) {
-    event.preventDefault()
-    setFeedback('');setError(false)
+    event.preventDefault();setFeedback('');setError(false);
     try {
-      await onCreate({full_name:fullName.trim(),email:email.trim(),role})
-      setFeedback('Invitación enviada. La persona debe abrir su correo y crear su contraseña.')
-      setFullName('');setEmail('');setRole('cashier')
-    } catch (err) {
-      setError(true)
-      setFeedback(err instanceof Error ? err.message : 'No se pudo crear la cuenta.')
+      await onCreate({full_name:fullName.trim(),email:email.trim(),role,permissions:role==='owner'?{}:permissions});
+      setFeedback('Invitación creada. La persona debe abrir el correo, activar la cuenta y aceptar los términos.');
+      setFullName('');setEmail('');setRole('cashier');setPermissions(JSON.parse(JSON.stringify(defaultCashierPermissions)));
+    } catch(err) {
+      setError(true);setFeedback(err instanceof Error?err.message:'No se pudo crear la cuenta.');
     }
   }
-  const roleLabel=(value:unknown)=>value==='owner'?'Administrador':'Trabajador'
-  return <><div className="module-heading"><div><div className="eyebrow">ADMINISTRACIÓN DE ACCESOS</div><h1>Usuarios</h1><p>Crea cuentas individuales y asigna el nivel de acceso de cada persona.</p></div></div>
-    <div className="users-layout"><section className="panel users-create-panel"><div className="panel-heading"><div><h2><UserPlus size={17}/> Invitar usuario</h2><p>Se enviará un correo para que configure su propia contraseña.</p></div></div>
-      <form className="users-create-form" onSubmit={submit}><label>Nombre completo<input value={fullName} onChange={e=>setFullName(e.target.value)} required minLength={2} maxLength={100} placeholder="Nombre de la persona"/></label><label>Correo electrónico<input type="email" value={email} onChange={e=>setEmail(e.target.value)} required maxLength={254} placeholder="persona@correo.com"/></label><label>Nivel de acceso<select value={role} onChange={e=>setRole(e.target.value as 'owner'|'cashier')}><option value="cashier">Trabajador · Operación diaria</option><option value="owner">Administrador · Acceso completo</option></select></label><div className="users-role-help"><Shield size={16}/><span>{role==='owner'?'El administrador puede gestionar usuarios, configuración, tarifas y todos los módulos.':'El trabajador puede operar los módulos diarios, pero no gestionar usuarios ni la configuración administrativa.'}</span></div><button className="primary-button" disabled={busy}><Mail size={16}/>{busy?'Enviando invitación…':'Enviar invitación'}</button>{feedback&&<p className={error?'users-feedback error':'users-feedback'}>{feedback}</p>}</form>
-    </section><section className="panel users-list-panel"><div className="panel-heading"><div><h2>Personal registrado</h2><p>{users.length} cuenta(s) con perfil</p></div></div>{users.length?<div className="users-list">{users.map(user=><div className="users-list-row" key={user.id}><div className="users-avatar">{String(user.full_name||'U').slice(0,1).toUpperCase()}</div><div className="users-info"><strong>{user.full_name||'Usuario'}</strong><small>{user.email || user.id}</small></div><span className={user.role==='owner'?'users-role admin':'users-role worker'}>{roleLabel(user.role)}</span><span className={user.active===false?'users-state inactive':'users-state'}>{user.active===false?'Desactivado':'Activo'}</span></div>)}</div>:<Empty text="Todavía no hay usuarios registrados."/ >}</section></div>
-  </>
+  async function savePermissions() {
+    if(!selectedUser)return;
+    try {
+      await onUpdatePermissions(selectedUser.id,editPermissions);
+      setSelectedUser(null);
+      setFeedback('Permisos actualizados correctamente.');
+    } catch(err) {
+      setError(true);setFeedback(err instanceof Error?err.message:'No se pudieron actualizar los permisos.');
+    }
+  }
+  async function changeActive(user:Row) {
+    try { await onToggleActive(user); }
+    catch(err) { setError(true);setFeedback(err instanceof Error?err.message:'No se pudo cambiar el estado.'); }
+  }
+  const roleLabel=(value:unknown)=>value==='owner'?'Administrador':'Trabajador';
+  const acceptanceByUser=new Map(acceptances.map(item=>[item.user_id,item]));
+  return <>
+    <div className="module-heading"><div><div className="eyebrow">ADMINISTRACIÓN DE ACCESOS</div><h1>Usuarios y permisos</h1><p>Invita personas, asigna el acceso exacto y consulta quién aceptó las condiciones.</p></div></div>
+    <div className="users-layout">
+      <section className="panel users-create-panel">
+        <div className="panel-heading"><div><h2><UserPlus size={17}/> Invitar usuario</h2><p>La invitación se envía por Supabase Auth. Después de activar su cuenta, verá sus términos y permisos antes de entrar.</p></div></div>
+        <form className="users-create-form" onSubmit={submit}>
+          <label>Nombre completo<input value={fullName} onChange={e=>setFullName(e.target.value)} required minLength={2} maxLength={100} placeholder="Nombre de la persona"/></label>
+          <label>Correo electrónico<input type="email" value={email} onChange={e=>setEmail(e.target.value)} required maxLength={254} placeholder="persona@correo.com"/></label>
+          <label>Nivel de acceso<select value={role} onChange={e=>{const next=e.target.value as 'owner'|'cashier';setRole(next);if(next==='cashier')setPermissions(JSON.parse(JSON.stringify(defaultCashierPermissions)));}}>
+            <option value="cashier">Trabajador · permisos personalizados</option><option value="owner">Administrador · acceso completo</option>
+          </select></label>
+          {role==='owner' ? <div className="users-role-help"><Shield size={16}/><span>El administrador tiene acceso completo a todos los módulos y puede gestionar usuarios, permisos y configuración.</span></div> :
+            <details className="permission-details" open><summary>Configurar permisos del trabajador</summary><p>Los permisos marcados se mostrarán en el menú y se validarán también en la base de datos. No existe permiso para borrar movimientos financieros.</p><PermissionMatrix value={permissions} onChange={setPermissions}/></details>}
+          <button className="primary-button" disabled={busy}><Mail size={16}/>{busy?'Enviando invitación…':'Enviar invitación'}</button>
+          {feedback&&<p className={error?'users-feedback error':'users-feedback'}>{feedback}</p>}
+        </form>
+      </section>
+      <section className="panel users-list-panel">
+        <div className="panel-heading"><div><h2>Personal registrado</h2><p>{users.length} cuenta(s) con perfil</p></div></div>
+        {users.length?<div className="users-list">{users.map(user=>{
+          const acceptance=acceptanceByUser.get(user.id);
+          return <div className="users-list-row users-list-row-expanded" key={user.id}>
+            <div className="users-avatar">{String(user.full_name||'U').slice(0,1).toUpperCase()}</div>
+            <div className="users-info"><strong>{user.full_name||'Usuario'}</strong><small>{user.email||user.id}</small><small>{acceptance ? 'Aceptó '+acceptance.terms_version+' · '+formatDate(acceptance.accepted_at) : 'Términos pendientes de aceptación'}</small></div>
+            <span className={user.role==='owner'?'users-role admin':'users-role worker'}>{roleLabel(user.role)}</span>
+            <span className={user.active===false?'users-state inactive':'users-state'}>{user.active===false?'Desactivado':'Activo'}</span>
+            {user.role!=='owner'&&<div className="users-row-actions">
+              <button type="button" className="secondary-button" onClick={()=>{setSelectedUser(user);setEditPermissions(JSON.parse(JSON.stringify(user.permissions||{})));}}>Permisos</button>
+              <button type="button" className="secondary-button" onClick={()=>void changeActive(user)}>{user.active===false?'Reactivar':'Desactivar'}</button>
+            </div>}
+          </div>;
+        })}</div>:<Empty text="Todavía no hay usuarios registrados."/>}
+      </section>
+    </div>
+    {selectedUser&&<section className="panel permission-edit-panel">
+      <div className="panel-heading"><div><h2>Permisos de {selectedUser.full_name}</h2><p>Los cambios se guardan en el perfil y se aplican a las próximas consultas y operaciones.</p></div><button type="button" className="secondary-button" onClick={()=>setSelectedUser(null)}>Cerrar</button></div>
+      <PermissionMatrix value={editPermissions} onChange={setEditPermissions}/>
+      <div className="form-actions"><button type="button" className="secondary-button" onClick={()=>setSelectedUser(null)}>Cancelar</button><button type="button" className="primary-button" disabled={busy} onClick={()=>void savePermissions()}>{busy?'Guardando…':'Guardar permisos'}</button></div>
+    </section>}
+  </>;
 }
 function Stat({icon,label,value,change,tint}:{icon:ReactNode;label:string;value:string;change:string;tint:string}){return <div className="stat-card"><div className={`stat-icon ${tint}`}>{icon}</div><span className="stat-label">{label}</span><strong className="stat-value">{value}</strong><small className="neutral">{change}</small></div>}
 function Quick({icon,label,onClick}:{icon:ReactNode;label:string;onClick:()=>void}){return <button className="quick-action" onClick={onClick}><span>{icon}</span><strong>{label}</strong><ArrowUpRight size={15}/></button>}
