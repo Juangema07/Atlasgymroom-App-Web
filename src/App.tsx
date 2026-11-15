@@ -836,6 +836,8 @@ function PlaceholderModule({ title }: { title: Section }) {
 }
 
 function DataModule({ config, rows, isOwner, search, setSearch, onCreate, onEdit, onTogglePause, onMemberPayment, onCollectBalance, memberName, productName, planName }: { config: ModuleConfig; rows: Row[]; isOwner:boolean; search:string; setSearch:(v:string)=>void; onCreate:()=>void; onEdit:(row:Row)=>void; onTogglePause:(row:Row)=>void; onMemberPayment:(row:Row)=>void; onCollectBalance:(row:Row)=>void; memberName:(id:unknown)=>string; productName:(id:unknown)=>string; planName:(id:unknown)=>string }) {
+  const [layout,setLayout]=useState<'table'|'cards'>('table')
+  const [quickFilter,setQuickFilter]=useState('all')
   const valueFor = (row:Row,key:string) => {
     const value = row[key]
     if (key === 'member_id') return memberName(value)
@@ -853,9 +855,32 @@ function DataModule({ config, rows, isOwner, search, setSearch, onCreate, onEdit
   }
   const canEdit = config.table === 'members' || config.table === 'gym_records' || (isOwner && (config.table === 'plans' || config.table === 'products'))
   const showActions = canEdit || config.table === 'payments'
+  const filterOptions = config.table === 'members'
+    ? [{value:'all',label:'Todos'},{value:'active',label:'Activos'},{value:'paused',label:'Pausados'},{value:'inactive',label:'Inactivos'}]
+    : config.table === 'payments'
+      ? [{value:'all',label:'Todos'},{value:'pending',label:'Con saldo'},{value:'paid',label:'Pagados'}]
+      : config.table === 'plans'
+        ? [{value:'all',label:'Todas'},{value:'active',label:'Activas'},{value:'inactive',label:'Inactivas'}]
+        : []
+  const visibleRows = rows.filter(row => {
+    if (quickFilter === 'all') return true
+    if (quickFilter === 'paused') return Boolean(row.paused_at)
+    if (quickFilter === 'active') return row.status === 'active' || row.active === true
+    if (quickFilter === 'inactive') return row.status === 'inactive' || row.active === false
+    if (quickFilter === 'pending') return Number(row.amount || 0) > Number(row.amount_paid || 0) && row.status !== 'voided'
+    if (quickFilter === 'paid') return row.status === 'paid' || Number(row.amount || 0) <= Number(row.amount_paid || 0)
+    return true
+  })
+  const actionsFor = (row:Row) => <>{canEdit && <button className="table-action" onClick={()=>onEdit(row)} title="Editar registro"><Pencil size={14}/></button>}{config.table==='members' && <><button className="table-action" onClick={()=>onMemberPayment(row)} title="Registrar pago"><CircleDollarSign size={14}/></button><button className="table-action" onClick={()=>onTogglePause(row)} title={row.paused_at?'Reactivar actividad':'Pausar actividad'}>{row.paused_at?<Play size={14}/>:<Pause size={14}/>}</button></>}{config.table==='payments' && Number(row.amount||0)>Number(row.amount_paid||0) && row.status!=='voided' && <button className="table-action" onClick={()=>onCollectBalance(row)} title="Cobrar saldo">Abonar</button>}</>
   return <><div className="module-heading"><div><div className="eyebrow">GESTIÓN</div><h1>{config.title}</h1><p>{config.description}</p></div>{config.fields.length > 0 && config.title !== 'Congelar pagos' && (config.table !== 'plans' && config.table !== 'products' || isOwner) && <button className="primary-button" onClick={onCreate}><Plus size={16}/> Nuevo registro</button>}{config.table === 'day_passes' && <button className="primary-button" onClick={onCreate}><Plus size={16}/> Nuevo pase</button>}{config.table === 'payments' && <button className="primary-button" onClick={onCreate}><Plus size={16}/> Registrar pago</button>}{config.table === 'sales' && <button className="primary-button" onClick={onCreate}><Plus size={16}/> Nueva venta</button>}{config.table === 'purchases' && <button className="primary-button" onClick={onCreate}><Plus size={16}/> Registrar compra</button>}{config.table === 'expenses' && <button className="primary-button" onClick={onCreate}><Plus size={16}/> Registrar gasto</button>}</div>
-    <section className="panel data-panel"><div className="table-toolbar"><div className="module-count">{rows.length} registro(s)</div><div className="search-box"><Search size={16}/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar…"/></div></div>
-      {rows.length ? <div className="table-wrap"><table><thead><tr>{config.columns.map(c=><th key={c.key}>{c.label}</th>)}{showActions && <th>Acciones</th>}</tr></thead><tbody>{rows.map(row=><tr key={row.id}>{config.columns.map(c=><td key={c.key}>{valueFor(row,c.key)}</td>)}{showActions && <td className="action-cell">{canEdit && <button className="table-action" onClick={()=>onEdit(row)} title="Editar"><Pencil size={14}/></button>}{config.table==='members' && <><button className="table-action" onClick={()=>onMemberPayment(row)} title="Registrar pago"><CircleDollarSign size={14}/></button><button className="table-action" onClick={()=>onTogglePause(row)} title={row.paused_at?'Reactivar actividad':'Pausar actividad'}>{row.paused_at?<Play size={14}/>:<Pause size={14}/>}</button></>}{config.table==='payments' && Number(row.amount||0)>Number(row.amount_paid||0) && row.status!=='voided' && <button className="table-action" onClick={()=>onCollectBalance(row)} title="Cobrar saldo">Abonar</button>}</td>}</tr>)}</tbody></table></div> : <Empty text={search ? 'No hay resultados para esa búsqueda.' : 'Todavía no hay registros en este módulo.'}/>}
+    <section className="panel data-panel admin-data-panel">
+      <div className="admin-data-toolbar">
+        <div className="admin-data-summary"><strong>{visibleRows.length}</strong><span>de {rows.length} registro(s)</span></div>
+        <label className="search-box"><Search size={16}/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar por nombre, documento, valor…"/></label>
+        <div className="admin-view-switch" aria-label="Tipo de vista"><button type="button" className={layout==='table'?'selected':''} onClick={()=>setLayout('table')}>Tabla</button><button type="button" className={layout==='cards'?'selected':''} onClick={()=>setLayout('cards')}>Tarjetas</button></div>
+      </div>
+      {filterOptions.length>0 && <div className="admin-quick-filters">{filterOptions.map(option=><button type="button" key={option.value} className={quickFilter===option.value?'selected':''} onClick={()=>setQuickFilter(option.value)}>{option.label}</button>)}</div>}
+      {visibleRows.length ? layout==='table' ? <div className="table-wrap"><table><thead><tr>{config.columns.map(c=><th key={c.key}>{c.label}</th>)}{showActions && <th>Acciones</th>}</tr></thead><tbody>{visibleRows.map(row=><tr key={row.id}>{config.columns.map(c=><td key={c.key}>{valueFor(row,c.key)}</td>)}{showActions && <td className="action-cell">{actionsFor(row)}</td>}</tr>)}</tbody></table></div> : <div className="admin-record-grid">{visibleRows.map(row=><article className="admin-record-card" key={row.id}><div className="admin-record-card-heading"><strong>{valueFor(row,config.columns[0]?.key || 'id')}</strong>{config.columns[1]&&<small>{config.columns[1].label}: {valueFor(row,config.columns[1].key)}</small>}</div><dl>{config.columns.slice(2).map(column=><div key={column.key}><dt>{column.label}</dt><dd>{valueFor(row,column.key)}</dd></div>)}</dl>{showActions&&<div className="admin-record-actions">{actionsFor(row)}</div>}</article>)}</div> : <Empty text={search || quickFilter!=='all' ? 'No hay registros que coincidan con estos filtros.' : 'Todavía no hay registros en este módulo.'}/>}
     </section>
     {config.table==='products' && <div className="module-footnote"><AlertTriangle size={14}/> Los ajustes directos de existencias deben justificarse. Próxima mejora: pantalla dedicada para ajustes auditados.</div>}
   </>
