@@ -14,18 +14,25 @@ async function enqueue(item: Omit<OutboxItem, 'attempts'>) {
 }
 
 export async function listRows(table: EntityTable): Promise<Row[]> {
+  const store = entityStore(table)
   if (supabase && await hasSession() && navigator.onLine) {
     const { data, error } = await supabase.from(table).select('*')
     if (!error && data) {
-      const store = entityStore(table)
-      for (const remote of data as Row[]) {
-        const queued = await localDb.outbox.toArray()
-        const pending = queued.some(item => (item.kind === 'upsert' && item.table === table && item.payload?.id === remote.id) || item.optimistic?.some(ref => ref.table === table && ref.id === remote.id))
-        if (!pending) await store.put(remote)
+      const localRows = await store.toArray()
+      const queued = await localDb.outbox.toArray()
+      const pendingIds = new Set<string>()
+      for (const item of queued) {
+        if ((item.kind === 'upsert' || item.kind === 'update') && item.table === table && item.payload?.id) pendingIds.add(item.payload.id)
+        for (const ref of item.optimistic || []) if (ref.table === table) pendingIds.add(ref.id)
       }
+      // Replace the cache with the rows visible to this authenticated user.
+      // Preserve only optimistic rows that still have an explicit pending operation.
+      await store.clear()
+      if ((data as Row[]).length) await store.bulkPut(data as Row[])
+      for (const local of localRows) if (pendingIds.has(local.id)) await store.put(local)
     }
   }
-  return entityStore(table).toArray()
+  return store.toArray()
 }
 
 export async function saveRow(table: EntityTable, input: Row): Promise<SaveResult> {
@@ -145,15 +152,21 @@ export async function queueStatus() {
   return { count: await localDb.outbox.count(), items: await localDb.outbox.orderBy('created_at').toArray() }
 }
 
+export async function clearLocalCache(): Promise<void> {
+  const pending = await localDb.outbox.count()
+  if (pending) throw new Error('No se puede limpiar la caché mientras existan movimientos pendientes de sincronizar.')
+  await Promise.all(ENTITY_TABLES.map(name => entityStore(name).clear()))
+}
+
 export async function exportLocalBackup(): Promise<string> {
   const backup: Record<string, Row[]> = {}
   for (const table of ENTITY_TABLES) backup[table] = await entityStore(table).toArray()
-  return JSON.stringify({ app: 'Atlasgymroom', exported_at: nowIso(), version: 1, data: backup }, null, 2)
+  return JSON.stringify({ app: 'Atlasgymrun', exported_at: nowIso(), version: 1, data: backup }, null, 2)
 }
 
 export async function importLocalBackup(raw: string) {
   const parsed = JSON.parse(raw)
-  if (parsed?.app !== 'Atlasgymroom' || !parsed?.data) throw new Error('El archivo no parece ser un respaldo de Atlasgymroom.')
+  if (!['Atlasgymrun','Atlasgymroom'].includes(parsed?.app) || !parsed?.data) throw new Error('El archivo no parece ser un respaldo de Atlasgymrun.')
   for (const table of ENTITY_TABLES) {
     const rows = parsed.data[table]
     if (Array.isArray(rows)) await entityStore(table).bulkPut(rows)

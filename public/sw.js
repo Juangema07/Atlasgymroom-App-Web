@@ -1,4 +1,4 @@
-const CACHE = 'atlasgymroom-shell-v1'
+const CACHE = 'atlasgymrun-shell-v2'
 const CORE = ['./', './index.html', './manifest.webmanifest']
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(CORE)).then(() => self.skipWaiting()))

@@ -5,12 +5,12 @@ import {
   Activity, ArrowDownRight, ArrowUpRight, BarChart3, CalendarDays,
   Check, CircleDollarSign, ClipboardList, Cloud, CloudOff,
   Download, Dumbbell, FileDown, FileUp, Home, LogOut, Menu,
-  Package, Plus, RefreshCw, Search, Settings, Shield, ShoppingBag, ShoppingCart, Users, ImagePlus, Tag, Zap,
+  Package, Plus, RefreshCw, Search, Settings, Shield, ShoppingBag, ShoppingCart, Users, ImagePlus, Tag, Zap, UserPlus, Printer, Mail,
   Wallet, X, Pencil, Receipt, AlertTriangle, UserRound, LockKeyhole, Pause, Play,
 } from 'lucide-react'
 import { supabase, supabaseConfigured } from './lib/supabase'
 import {
-  exportLocalBackup, importLocalBackup, listRows, queueStatus, runBusinessRpc,
+  clearLocalCache, exportLocalBackup, importLocalBackup, listRows, queueStatus, runBusinessRpc,
   saveRow, syncPending, updateRow,
 } from './lib/data'
 import { makeId, nowIso, type EntityTable, type Row } from './lib/localdb'
@@ -182,6 +182,7 @@ export default function App() {
   const [busy, setBusy] = useState(false)
   const [toast, setToast] = useState('')
   const [syncCount, setSyncCount] = useState(0)
+  const [cashPrintRecord, setCashPrintRecord] = useState<Row | null>(null)
   const [saleLines, setSaleLines] = useState<{ product_id: string; quantity: number }[]>([])
   const [purchaseLines, setPurchaseLines] = useState<{ product_id: string; quantity: number; unit_cost: number }[]>([])
   const [productImageFile, setProductImageFile] = useState<File | null>(null)
@@ -276,7 +277,36 @@ export default function App() {
     setRecoveryMode(false)
     setToast('Contraseña actualizada. Ya puedes iniciar sesión con la nueva contraseña.')
   }
-  async function signOut() { await supabase?.auth.signOut(); setSection('Inicio') }
+  async function signOut() {
+    const pending = await queueStatus()
+    if (pending.count) {
+      notify('Hay movimientos sin sincronizar. Conéctate y sincronízalos antes de cerrar sesión para no perderlos.')
+      return
+    }
+    await clearLocalCache()
+    await supabase?.auth.signOut()
+    setRows({})
+    setProfile(null)
+    setSection('Inicio')
+  }
+
+  async function createStaffUser(payload: { full_name: string; email: string; role: 'owner' | 'cashier' }) {
+    if (!supabase || !isOwner) throw new Error('Solo un administrador puede crear usuarios.')
+    setBusy(true)
+    try {
+      const { data, error } = await supabase.functions.invoke('manage-user', { body: payload })
+      if (error) throw new Error(error.message || 'No se pudo enviar la invitación.')
+      await refresh()
+      notify(String(data?.message || 'Invitación enviada correctamente.'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  function printCashReport(record: Row) {
+    setCashPrintRecord(record)
+    window.setTimeout(() => window.print(), 250)
+  }
 
   function notify(message: string) { setToast(message); window.setTimeout(() => setToast(''), 5000) }
   function openRecord(edit?: Row) {
@@ -541,7 +571,7 @@ export default function App() {
     const cashRows = (rows.cash_movements || []).filter(m => m.cash_session_id === activeSession.id && m.method === 'cash')
     const expected = Number(activeSession.initial_cash || 0) + cashRows.reduce((sum,m) => sum + (m.direction === 'income' ? Number(m.amount) : -Number(m.amount)), 0)
     setBusy(true)
-    const result = await runBusinessRpc('close_cash_session', { p_session_id: activeSession.id, p_counted_cash: counted }, [{ table: 'cash_sessions', row: { ...activeSession, status: 'closed', expected_cash: expected, counted_cash: counted, difference: counted - expected, closed_at: nowIso(), updated_at: nowIso() } }])
+    const result = await runBusinessRpc('close_cash_session', { p_session_id: activeSession.id, p_counted_cash: counted }, [{ table: 'cash_sessions', row: { ...activeSession, status: 'closed', expected_cash: expected, counted_cash: counted, difference: counted - expected, closed_at: nowIso(), closed_by: session?.user.id || null, updated_at: nowIso() } }])
     setBusy(false); setDialog(null); notify(result.message || 'Solicitud de cierre de caja guardada.'); await refresh()
   }
 
@@ -573,20 +603,6 @@ export default function App() {
   }
   async function seedDemoData() { await runDemoAction('seed') }
   async function resetDemoData() { await runDemoAction('reset') }
-  async function resetTestData() {
-    const confirmation = window.prompt('Se eliminarán todos los registros operativos del gimnasio (clientes, pagos, asistencias, ventas, productos, inventario, compras, gastos, caja y auditoría). Se conservarán tu cuenta de propietario y las tarifas/planes. Escribe REINICIAR para continuar.')
-    if (confirmation !== 'REINICIAR') { notify('Operación cancelada.'); return }
-    setBusy(true)
-    try {
-      if (!supabase || !session || !navigator.onLine) throw new Error('Conéctate e inicia sesión como propietario para reiniciar los registros.')
-      const { error } = await supabase.rpc('reset_test_data')
-      if (error) throw error
-      await refresh(); setSaleLines([]); setPurchaseLines([])
-      notify('Registros operativos reiniciados. Tu cuenta y las tarifas se conservaron.')
-    } catch (error) { notify(error instanceof Error ? error.message : 'No se pudo reiniciar los registros.') }
-    finally { setBusy(false) }
-  }
-
   const handleSection = (label: Section) => { setSection(label); setMenuOpen(false); setSearch(''); setToast('') }
   const openCreate = () => {
     if (section === 'Ventas') openSpecial('sale')
@@ -619,11 +635,11 @@ export default function App() {
       </div> : <button key={label} className={section === target ? 'nav-item active' : 'nav-item'} onClick={() => handleSection(target!)}><Icon size={18}/><span>{label}</span></button>)}</nav>
       <div className="workspace-label admin-label">PROGRAMA</div>
       <nav><button className="nav-item" onClick={() => handleSection('Configuración')}><Shield size={18}/><span>Política de privacidad</span></button><button className="nav-item" onClick={() => notify('El buzón de sugerencias estará disponible en una próxima versión.')}><ClipboardList size={18}/><span>Buzón de sugerencias</span></button></nav>
-      <div className="sidebar-bottom"><div className="help-card"><div className="help-icon"><Shield size={17}/></div><strong>Registros bajo control</strong><p>Movimientos financieros con trazabilidad. No se borran desde la aplicación.</p></div><div className="profile"><div className="avatar owner">{userLabel.slice(0,2).toUpperCase()}</div><div className="profile-copy"><strong>{userLabel}</strong><small>{supabaseConfigured ? (isOwner ? 'Propietario' : 'Empleado de caja') : 'Modo local · sin cuenta'}</small></div>{supabaseConfigured && <button className="profile-action" title="Cerrar sesión" onClick={signOut}><LogOut size={15}/></button>}</div></div>
+      <div className="sidebar-bottom"><div className="help-card"><div className="help-icon"><Shield size={17}/></div><strong>Registros bajo control</strong><p>Movimientos financieros con trazabilidad. No se borran desde la aplicación.</p></div><div className="profile"><div className="avatar owner">{userLabel.slice(0,2).toUpperCase()}</div><div className="profile-copy"><strong>{userLabel}</strong><small>{supabaseConfigured ? (isOwner ? 'Administrador' : 'Trabajador') : 'Modo local · sin cuenta'}</small></div>{supabaseConfigured && <button className="profile-action" title="Cerrar sesión" onClick={signOut}><LogOut size={15}/></button>}</div></div>
     </aside>
     {menuOpen && <button className="scrim" aria-label="Cerrar menú" onClick={() => setMenuOpen(false)}/>}
     <main className="main-content">
-      <header className="topbar"><div className="topbar-left"><button className="menu-toggle" onClick={() => setMenuOpen(true)}><Menu/></button><div className="breadcrumb">Atlasgymroom <span>/</span> <strong>{section}</strong></div></div><div className="topbar-actions"><div className={`status-pill ${supabaseConfigured ? 'connected' : 'local'}`}>{supabaseConfigured ? <><Cloud size={13}/> Supabase</> : <><CloudOff size={13}/> Solo este dispositivo</>}</div><button className="sync-button" onClick={() => void sync()} title="Sincronizar"><RefreshCw size={15}/><span>{syncCount ? `${syncCount} pendientes` : 'Sin pendientes'}</span></button><div className="avatar owner">{userLabel.slice(0,2).toUpperCase()}</div></div></header>
+      <header className="topbar"><div className="topbar-left"><button className="menu-toggle" onClick={() => setMenuOpen(true)}><Menu/></button><div className="breadcrumb">Atlasgymrun <span>/</span> <strong>{section}</strong></div></div><div className="topbar-actions"><div className={`status-pill ${supabaseConfigured ? 'connected' : 'local'}`}>{supabaseConfigured ? <><Cloud size={13}/> Supabase</> : <><CloudOff size={13}/> Solo este dispositivo</>}</div><button className="sync-button" onClick={() => void sync()} title="Sincronizar"><RefreshCw size={15}/><span>{syncCount ? `${syncCount} pendientes` : 'Sin pendientes'}</span></button><div className="avatar owner">{userLabel.slice(0,2).toUpperCase()}</div></div></header>
       <section className="command-dock" aria-label="Accesos rápidos">
         <div className="command-dock-title"><Zap size={17}/><span>OPERACIÓN INMEDIATA</span><small>Acciones de un toque</small></div>
         <button className="command-tile entry-tile" onClick={() => openSpecial('daypass')}><span><Zap size={19}/></span><strong>Cobrar entrada</strong><small>$4.000 · sin cliente</small></button>
@@ -643,15 +659,16 @@ export default function App() {
       {supabaseConfigured && syncCount > 0 && <div className="sync-warning"><CloudOff size={15}/><span>{syncCount} operación(es) esperando sincronización. No cierres ni borres los datos del navegador hasta recuperar la conexión.</span><button onClick={() => void sync()}>Reintentar</button></div>}
       <div className="page">
         {section === 'Inicio' && <Dashboard activeMembers={activeMembers} expiredMembers={expiredMembers} total={members.length} todayIncome={todayIncome} todayAttendances={(rows.attendance || []).filter(a => dateInBogota(a.entered_at) === today()).length} expiring={members.filter(m => m.end_date && m.end_date >= today() && m.end_date <= datePlusDays(today(), 7)).length} stockLow={stockLow} rows={rows} onNavigate={handleSection} />}
-        {section === 'Caja' && <CashPage session={activeSession} sessions={rows.cash_sessions || []} movements={rows.cash_movements || []} onOpen={() => openSpecial('cash')} onClose={() => openSpecial('cash')} />}
+        {section === 'Caja' && <CashPage session={activeSession} sessions={rows.cash_sessions || []} movements={rows.cash_movements || []} profiles={rows.profiles || []} onOpen={() => openSpecial('cash')} onClose={() => openSpecial('cash')} onPrint={printCashReport} />}
         {section === 'Informes' && <Reports rows={rows} />}
-        {section === 'Configuración' && <SettingsPage onBackup={backup} onRestore={() => fileRef.current?.click()} onReset={resetTestData} onResetDemo={resetDemoData} onSeed={seedDemoData} busy={busy} />}
+        {section === 'Configuración' && <SettingsPage onBackup={backup} onRestore={() => fileRef.current?.click()} onResetDemo={resetDemoData} onSeed={seedDemoData} busy={busy} />}
         {section === 'Productos' && <ProductCatalog products={filteredRows} onCreate={openCreate} onEdit={openRecord}/>}
         {moduleConfig && section !== 'Productos' && <DataModule config={moduleConfig} rows={filteredRows} isOwner={Boolean(isOwner)} search={search} setSearch={setSearch} onCreate={openCreate} onEdit={openRecord} onTogglePause={toggleMemberPause} onMemberPayment={openMemberPayment} onCollectBalance={payment => { setEditing(payment); setForm({ amount_paid: String(Math.max(0, Number(payment.amount || 0) - Number(payment.amount_paid || 0))), method: 'cash' }); setDialog('balance') }} memberName={memberName} productName={productName} planName={planName} />}
-        {!moduleConfig && section !== 'Inicio' && section !== 'Caja' && section !== 'Informes' && section !== 'Configuración' && <PlaceholderModule title={section} />}
+        {section === 'Usuarios' && (isOwner ? <UsersPage users={rows.profiles || []} onCreate={createStaffUser} busy={busy} /> : <AccessDenied />)}
+         {!moduleConfig && section !== 'Inicio' && section !== 'Caja' && section !== 'Informes' && section !== 'Configuración' && section !== 'Usuarios' && <PlaceholderModule title={section} />}
         {section === 'Equipo' && !isOwner && <AccessDenied/>}
         {section === 'Auditoría' && !isOwner && <AccessDenied/>}
-        <footer>© 2026 Atlasgymroom <span>Gestión clara para entrenar mejor.</span></footer>
+        <footer>© 2026 Atlasgymrun <span>Gestión clara para entrenar mejor.</span></footer>
       </div>
     </main>
 
@@ -724,6 +741,7 @@ export default function App() {
       {activeSession ? <form className="form-grid" onSubmit={closeCash}><FieldInput field={{ key: 'counted_cash', label: 'Efectivo contado (COP)', type: 'number', required: true }} value={form.counted_cash || ''} onChange={v => setForm(f => ({ ...f, counted_cash: v }))}/><p className="form-hint full">El sistema comparará el efectivo contado con el saldo esperado a partir de la apertura y movimientos en efectivo.</p><FormActions busy={busy} onCancel={() => setDialog(null)} /></form> :
       <form className="form-grid" onSubmit={openCash}><FieldInput field={{ key: 'initial_cash', label: 'Base inicial (COP)', type: 'number', required: true }} value={form.initial_cash || ''} onChange={v => setForm(f => ({ ...f, initial_cash: v }))}/><FieldInput field={{ key: 'notes', label: 'Notas' }} value={form.notes || ''} onChange={v => setForm(f => ({ ...f, notes: v }))}/><FormActions busy={busy} onCancel={() => setDialog(null)} /></form>}
     </Modal>}
+    {cashPrintRecord && <CashClosePrint session={cashPrintRecord} movements={rows.cash_movements || []} profiles={rows.profiles || []} />}
     <input ref={fileRef} type="file" accept="application/json" hidden onChange={e => void restore(e.target.files?.[0])}/>
     {toast && <div className="toast"><Check size={16}/>{toast}<button onClick={() => setToast('')}><X size={14}/></button></div>}
   </div>
@@ -731,13 +749,13 @@ export default function App() {
 
 function Login({ onSignIn, onForgotPassword, busy, toast }: { onSignIn: (email: string, password: string) => void; onForgotPassword: (email: string) => void; busy: boolean; toast: string }) {
   const [email,setEmail] = useState(''); const [password,setPassword] = useState('')
-  return <div className="auth-screen"><form className="auth-card" onSubmit={e => { e.preventDefault(); onSignIn(email,password) }}><div className="brand-mark"><Dumbbell size={23}/></div><div className="eyebrow">ATLASGYMROOM</div><h1>Bienvenido</h1><p>Ingresa con tu cuenta individual para administrar el gimnasio.</p><label>Correo electrónico<input type="email" value={email} onChange={e => setEmail(e.target.value)} required autoComplete="username"/></label><label>Contraseña<input type="password" value={password} onChange={e => setPassword(e.target.value)} required autoComplete="current-password"/></label><button className="primary-button auth-submit" disabled={busy}><LockKeyhole size={16}/>{busy ? 'Ingresando…' : 'Iniciar sesión'}</button><button type="button" className="auth-link" disabled={busy || !email.trim()} onClick={() => onForgotPassword(email)}>Olvidé mi contraseña</button>{toast && <div className="auth-error">{toast}</div>}<small>Las cuentas las crea el propietario desde Supabase Auth. No hay registro público.</small></form></div>
+  return <div className="auth-screen"><form className="auth-card" onSubmit={e => { e.preventDefault(); onSignIn(email,password) }}><div className="brand-mark"><Dumbbell size={23}/></div><div className="eyebrow">ATLASGYMRUN</div><h1>Bienvenido</h1><p>Ingresa con tu cuenta individual para administrar el gimnasio.</p><label>Correo electrónico<input type="email" value={email} onChange={e => setEmail(e.target.value)} required autoComplete="username"/></label><label>Contraseña<input type="password" value={password} onChange={e => setPassword(e.target.value)} required autoComplete="current-password"/></label><button className="primary-button auth-submit" disabled={busy}><LockKeyhole size={16}/>{busy ? 'Ingresando…' : 'Iniciar sesión'}</button><button type="button" className="auth-link" disabled={busy || !email.trim()} onClick={() => onForgotPassword(email)}>Olvidé mi contraseña</button>{toast && <div className="auth-error">{toast}</div>}<small>Las cuentas las crea el propietario desde Supabase Auth. No hay registro público.</small></form></div>
 }
 
 function PasswordRecovery({ onSave, busy, toast }: { onSave: (password: string) => void; busy: boolean; toast: string }) {
   const [password,setPassword] = useState(''); const [confirm,setConfirm] = useState('')
   const mismatch = confirm.length > 0 && password !== confirm
-  return <div className="auth-screen"><form className="auth-card" onSubmit={e => { e.preventDefault(); if (password.length < 8 || password !== confirm) return; onSave(password) }}><div className="brand-mark"><LockKeyhole size={23}/></div><div className="eyebrow">ATLASGYMROOM · SEGURIDAD</div><h1>Nueva contraseña</h1><p>Elige una contraseña nueva para recuperar el acceso a tu cuenta.</p><label>Nueva contraseña<input type="password" value={password} onChange={e => setPassword(e.target.value)} required minLength={8} autoComplete="new-password"/></label><label>Confirmar contraseña<input type="password" value={confirm} onChange={e => setConfirm(e.target.value)} required minLength={8} autoComplete="new-password"/></label>{mismatch && <div className="auth-error">Las contraseñas no coinciden.</div>}<button className="primary-button auth-submit" disabled={busy || password.length < 8 || password !== confirm}><LockKeyhole size={16}/>{busy ? 'Guardando…' : 'Guardar nueva contraseña'}</button>{toast && <div className="auth-error">{toast}</div>}<small>Usa al menos 8 caracteres. Al guardar, volverás al inicio de sesión.</small></form></div>
+  return <div className="auth-screen"><form className="auth-card" onSubmit={e => { e.preventDefault(); if (password.length < 8 || password !== confirm) return; onSave(password) }}><div className="brand-mark"><LockKeyhole size={23}/></div><div className="eyebrow">ATLASGYMRUN · SEGURIDAD</div><h1>Nueva contraseña</h1><p>Elige una contraseña nueva para recuperar el acceso a tu cuenta.</p><label>Nueva contraseña<input type="password" value={password} onChange={e => setPassword(e.target.value)} required minLength={8} autoComplete="new-password"/></label><label>Confirmar contraseña<input type="password" value={confirm} onChange={e => setConfirm(e.target.value)} required minLength={8} autoComplete="new-password"/></label>{mismatch && <div className="auth-error">Las contraseñas no coinciden.</div>}<button className="primary-button auth-submit" disabled={busy || password.length < 8 || password !== confirm}><LockKeyhole size={16}/>{busy ? 'Guardando…' : 'Guardar nueva contraseña'}</button>{toast && <div className="auth-error">{toast}</div>}<small>Usa al menos 8 caracteres. Al guardar, volverás al inicio de sesión.</small></form></div>
 }
 function Dashboard(props: { activeMembers: number; expiredMembers: number; total: number; todayIncome: number; todayAttendances: number; expiring: number; stockLow: Row[]; rows: Record<string,Row[]>; onNavigate:(s:Section)=>void }) {
   const day=today(),weekStart=datePlusDays(day,-6),monthStart=day.slice(0,7)+'-01'
@@ -755,7 +773,7 @@ function Dashboard(props: { activeMembers: number; expiredMembers: number; total
   const categoryData=Array.from(categorySales.entries()).map(([label,value])=>({label,value})).sort((a,b)=>b.value-a.value).slice(0,5)
   const todayLabel=new Date().toLocaleDateString('es-CO',{timeZone:'America/Bogota',weekday:'long',day:'numeric',month:'long',year:'numeric'})
   return <div className="command-center">
-    <div className="control-room-heading"><div><div className="eyebrow">CENTRO DE MANDO · ATLASGYMROOM</div><h1>Panel de operaciones</h1><p>{todayLabel} · Estado general del gimnasio</p></div><div className="control-room-status"><span className="live-dot"/> Operación del día</div></div>
+    <div className="control-room-heading"><div><div className="eyebrow">CENTRO DE MANDO · ATLASGYMRUN</div><h1>Panel de operaciones</h1><p>{todayLabel} · Estado general del gimnasio</p></div><div className="control-room-status"><span className="live-dot"/> Operación del día</div></div>
     <div className="overview-metrics">
       <div className="overview-card metric-primary"><div className="metric-top"><span>INGRESOS HOY</span><CircleDollarSign size={18}/></div><strong>{formatMoney(props.todayIncome)}</strong><small>Pagos + ventas + entradas</small><div className="metric-spark"><span style={{width:Math.max(8,Math.min(100,props.todayIncome/Math.max(1,...trend.map(x=>x.value))*100))+'%'}}/></div></div>
       <div className="overview-card"><div className="metric-top"><span>CLIENTES ACTIVOS</span><Users size={18}/></div><strong>{props.activeMembers}</strong><small>{props.total} registrados en total</small><button onClick={()=>props.onNavigate('Miembros')}>Abrir clientes <ArrowUpRight size={13}/></button></div>
@@ -829,7 +847,7 @@ function DataModule({ config, rows, isOwner, search, setSearch, onCreate, onEdit
     if (key === 'active') return value ? 'Activo' : 'Inactivo'
     if (key === 'status') return row.paused_at ? 'Pausado' : ({ active:'Activo',inactive:'Inactivo',expired:'Vencido',debt:'Con saldo',paid:'Pagado',partial:'Abono parcial',pending:'Pendiente',voided:'Anulado',open:'Abierta',closed:'Cerrada' } as Record<string,string>)[String(value)] || String(value || '—')
     if (key === 'method') return ({cash:'Efectivo',transfer:'Transferencia',nequi:'Nequi',card:'Tarjeta',other:'Otro'} as Record<string,string>)[String(value)] || value
-    if (key === 'role') return value === 'owner' ? 'Propietario' : 'Caja'
+    if (key === 'role') return value === 'owner' ? 'Administrador' : 'Trabajador'
     if (key === 'id') return String(value || '').slice(0,8)
     return value == null || value === '' ? '—' : String(value)
   }
@@ -843,18 +861,40 @@ function DataModule({ config, rows, isOwner, search, setSearch, onCreate, onEdit
   </>
 }
 
-function CashPage({ session, sessions, movements, onOpen, onClose }: { session?:Row; sessions:Row[]; movements:Row[]; onOpen:()=>void; onClose:()=>void }) {
+function CashPage({ session, sessions, movements, profiles, onOpen, onClose, onPrint }: { session?:Row; sessions:Row[]; movements:Row[]; profiles:Row[]; onOpen:()=>void; onClose:()=>void; onPrint:(row:Row)=>void }) {
   const currentMovements = session ? movements.filter(m=>m.cash_session_id===session.id) : []
   const cashIncome = currentMovements.filter(m=>m.method==='cash'&&m.direction==='income').reduce((s,m)=>s+Number(m.amount),0)
   const cashExpense = currentMovements.filter(m=>m.method==='cash'&&m.direction==='expense').reduce((s,m)=>s+Number(m.amount),0)
   const expected = Number(session?.initial_cash || 0) + cashIncome - cashExpense
+  const profileName = (id:unknown) => profiles.find(p=>p.id===id)?.full_name || 'Usuario'
+  const closedSessions = sessions.filter(s=>s.status==='closed').sort((a,b)=>String(b.closed_at||'').localeCompare(String(a.closed_at||'')))
   return <><div className="module-heading"><div><div className="eyebrow">CONTROL FINANCIERO</div><h1>Caja</h1><p>Apertura, movimientos y cierre con diferencia de efectivo.</p></div>{session ? <button className="primary-button" onClick={onClose}>Cerrar caja</button> : <button className="primary-button" onClick={onOpen}><Plus size={16}/> Abrir caja</button>}</div>
     <div className="stats-grid cash-stats"><Stat icon={<Wallet/>} label="Estado de caja" value={session?'Abierta':'Cerrada'} change={session?formatDate(session.opened_at):'Sin sesión activa'} tint="green"/><Stat icon={<CircleDollarSign/>} label="Base inicial" value={formatMoney(session?.initial_cash)} change="Efectivo de apertura" tint="blue"/><Stat icon={<ArrowUpRight/>} label="Ingresos en efectivo" value={formatMoney(cashIncome)} change="Solo dinero recibido" tint="yellow"/><Stat icon={<ArrowDownRight/>} label="Efectivo esperado" value={formatMoney(expected)} change="Base + ingresos − egresos" tint="purple"/></div>
     <section className="panel data-panel"><div className="panel-heading"><div><h2>Movimientos de esta caja</h2><p>Otros métodos de pago se muestran en registros, pero no suman al efectivo.</p></div></div>{currentMovements.length ? <div className="table-wrap"><table><thead><tr><th>Tipo</th><th>Descripción</th><th>Método</th><th>Valor</th><th>Fecha</th></tr></thead><tbody>{currentMovements.map(m=><tr key={m.id}><td>{m.direction==='income'?'Ingreso':'Salida'}</td><td>{m.description}</td><td>{m.method}</td><td>{formatMoney(m.amount)}</td><td>{formatDate(m.created_at)}</td></tr>)}</tbody></table></div> : <Empty text="Sin movimientos vinculados a la caja abierta."/ >}</section>
-    <section className="panel data-panel"><div className="panel-heading"><div><h2>Cierres anteriores</h2><p>Historial de sesiones de caja.</p></div></div>{sessions.filter(s=>s.status==='closed').length ? <div className="table-wrap"><table><thead><tr><th>Apertura</th><th>Cierre</th><th>Esperado</th><th>Contado</th><th>Diferencia</th></tr></thead><tbody>{sessions.filter(s=>s.status==='closed').map(s=><tr key={s.id}><td>{formatDate(s.opened_at)}</td><td>{formatDate(s.closed_at)}</td><td>{formatMoney(s.expected_cash)}</td><td>{formatMoney(s.counted_cash)}</td><td>{formatMoney(s.difference)}</td></tr>)}</tbody></table></div>:<Empty text="Aún no hay cierres guardados."/ >}</section>
+    <section className="panel data-panel"><div className="panel-heading"><div><h2>Cierres anteriores</h2><p>Descarga el comprobante completo de cada cierre en PDF.</p></div></div>{closedSessions.length ? <div className="table-wrap"><table><thead><tr><th>Apertura</th><th>Cierre</th><th>Responsable</th><th>Esperado</th><th>Contado</th><th>Diferencia</th><th>PDF</th></tr></thead><tbody>{closedSessions.map(s=><tr key={s.id}><td>{formatDate(s.opened_at)}</td><td>{formatDate(s.closed_at)}</td><td>{profileName(s.closed_by || s.opened_by)}</td><td>{formatMoney(s.expected_cash)}</td><td>{formatMoney(s.counted_cash)}</td><td className={Number(s.difference)===0?'cash-difference-ok':'cash-difference-alert'}>{formatMoney(s.difference)}</td><td><button className="table-action cash-print-button" title="Imprimir o guardar cierre en PDF" onClick={()=>onPrint(s)}><Printer size={15}/></button></td></tr>)}</tbody></table></div>:<Empty text="Aún no hay cierres guardados."/ >}</section>
   </>
 }
 
+function CashClosePrint({ session, movements, profiles }: { session:Row; movements:Row[]; profiles:Row[] }) {
+  const entries = movements.filter(m=>m.cash_session_id===session.id).sort((a,b)=>String(a.created_at||'').localeCompare(String(b.created_at||'')))
+  const cash = entries.filter(m=>m.method==='cash')
+  const other = entries.filter(m=>m.method!=='cash')
+  const sum = (items:Row[],direction:string) => items.filter(m=>m.direction===direction).reduce((total,m)=>total+Number(m.amount||0),0)
+  const cashIncome=sum(cash,'income'), cashExpense=sum(cash,'expense')
+  const otherIncome=sum(other,'income'), otherExpense=sum(other,'expense')
+  const name=(id:unknown)=>profiles.find(p=>p.id===id)?.full_name || 'Usuario'
+  const method=(value:unknown)=>({cash:'Efectivo',transfer:'Transferencia',nequi:'Nequi',card:'Tarjeta / datáfono',other:'Otro'} as Record<string,string>)[String(value)]||String(value||'—')
+  return <article className="cash-print-document">
+    <header className="cash-print-header"><div className="cash-print-brand"><span className="cash-print-mark">A</span><div><strong>ATLASGYMRUN</strong><small>GESTIÓN DE GIMNASIO</small></div></div><div className="cash-print-title"><h1>Comprobante de cierre de caja</h1><p>Documento interno · No reemplaza comprobantes bancarios ni fiscales</p></div></header>
+    <div className="cash-print-meta"><div><small>Fecha de apertura</small><strong>{formatDate(session.opened_at)} · {new Date(String(session.opened_at)).toLocaleTimeString('es-CO',{timeZone:'America/Bogota',hour:'2-digit',minute:'2-digit'})}</strong></div><div><small>Fecha de cierre</small><strong>{formatDate(session.closed_at)} · {session.closed_at?new Date(String(session.closed_at)).toLocaleTimeString('es-CO',{timeZone:'America/Bogota',hour:'2-digit',minute:'2-digit'}):'—'}</strong></div><div><small>Abrió la caja</small><strong>{name(session.opened_by)}</strong></div><div><small>Cerró la caja</small><strong>{name(session.closed_by || session.opened_by)}</strong></div></div>
+    <section className="cash-print-summary"><div><small>Base inicial</small><strong>{formatMoney(session.initial_cash)}</strong></div><div><small>Ingresos efectivo</small><strong>{formatMoney(cashIncome)}</strong></div><div><small>Egresos efectivo</small><strong>{formatMoney(cashExpense)}</strong></div><div><small>Efectivo esperado</small><strong>{formatMoney(session.expected_cash)}</strong></div><div><small>Efectivo contado</small><strong>{formatMoney(session.counted_cash)}</strong></div><div className={Number(session.difference)===0?'neutral':'difference'}><small>Diferencia</small><strong>{formatMoney(session.difference)}</strong></div></section>
+    <section className="cash-print-other"><h2>Movimientos por medios no efectivo</h2><div><span>Ingresos no efectivo</span><strong>{formatMoney(otherIncome)}</strong></div><div><span>Egresos no efectivo</span><strong>{formatMoney(otherExpense)}</strong></div></section>
+    <h2 className="cash-print-section-title">Detalle de movimientos ({entries.length})</h2>
+    {entries.length ? <table className="cash-print-table"><thead><tr><th>Fecha y hora</th><th>Tipo</th><th>Concepto</th><th>Medio</th><th>Valor</th></tr></thead><tbody>{entries.map(m=><tr key={m.id}><td>{new Date(String(m.created_at)).toLocaleString('es-CO',{timeZone:'America/Bogota'})}</td><td>{m.direction==='income'?'Ingreso':'Egreso'}</td><td>{m.description||'—'}</td><td>{method(m.method)}</td><td>{formatMoney(m.amount)}</td></tr>)}</tbody></table> : <p className="cash-print-empty">No se registraron movimientos durante esta sesión.</p>}
+    {session.notes && <div className="cash-print-notes"><strong>Observaciones de apertura:</strong> {session.notes}</div>}
+    <footer className="cash-print-footer"><span>Atlasgymrun · Reporte generado {new Date().toLocaleString('es-CO',{timeZone:'America/Bogota'})}</span><span>Conservar junto con el arqueo físico de caja.</span></footer>
+  </article>
+}
 function Reports({ rows }: { rows:Record<string,Row[]> }) {
   const payments = rows.payments || [], sales = rows.sales || [], expenses = rows.expenses || [], passes=rows.day_passes||[]
   const income = [...payments,...sales,...passes].reduce((s,r)=>s+Number(r.amount_paid ?? r.amount ?? 0),0)
@@ -867,11 +907,35 @@ function Reports({ rows }: { rows:Record<string,Row[]> }) {
   </>
 }
 
-function SettingsPage({ onBackup, onRestore, onReset, onResetDemo, onSeed, busy }: { onBackup:()=>void; onRestore:()=>void; onReset:()=>void; onResetDemo:()=>void; onSeed:()=>void; busy:boolean }) {
-  return <><div className="module-heading"><div><div className="eyebrow">SISTEMA</div><h1>Configuración</h1><p>Respaldo, continuidad y limpieza del entorno de pruebas.</p></div></div><div className="content-grid"><section className="panel setting-card"><div className="setting-icon"><FileDown/></div><h2>Respaldo local</h2><p>Descarga un archivo JSON con los datos guardados en este navegador. El respaldo puede contener información personal; protégelo.</p><button className="primary-button" onClick={onBackup}><Download size={16}/> Exportar respaldo</button></section><section className="panel setting-card"><div className="setting-icon"><FileUp/></div><h2>Restaurar respaldo</h2><p>Importa un respaldo previamente exportado en el dispositivo actual. Los registros se agregan o actualizan.</p><button className="secondary-button" onClick={onRestore}><FileUp size={16}/> Seleccionar archivo</button></section></div><section className="panel setting-card"><div className="setting-icon"><Activity/></div><h2>Modo de demostración</h2><p>Carga registros ficticios para probar miembros, pagos, asistencias, productos, ventas, compras, gastos e informes. Quedan identificados como DEMO.</p><button className="primary-button" disabled={busy} onClick={onSeed}><Plus size={16}/> {busy?"Procesando…":"Cargar datos de demostración"}</button></section><section className="panel reset-test-panel"><div className="reset-test-icon"><RefreshCw size={20}/></div><div><h2>Reiniciar todos los registros</h2><p>Elimina los registros operativos del gimnasio, incluidos clientes, pagos, asistencias, ventas, productos, inventario, compras, gastos, caja y auditoría. Conserva tu cuenta de propietario y las tarifas/planes.</p><small>Confirma escribiendo REINICIAR. Esta acción no se puede deshacer; exporta un respaldo antes.</small></div><button className="danger-button" disabled={busy} onClick={onReset}>{busy?"Procesando…":"Reiniciar registros"}</button></section><section className="panel reset-test-panel"><div className="reset-test-icon"><Activity size={20}/></div><div><h2>Limpiar datos de demostración</h2><p>Elimina únicamente registros DEMO. Conserva datos reales, usuarios y tarifas.</p><small>Confirma escribiendo LIMPIAR DEMO.</small></div><button className="secondary-button" disabled={busy} onClick={onResetDemo}>{busy?"Procesando…":"Limpiar pruebas"}</button></section><section className="panel security-panel"><Shield/><div><h2>Seguridad y acceso</h2><p>Con Supabase, los usuarios se autentican individualmente y la base de datos aplica permisos RLS. Los roles se administran desde el perfil del usuario. No compartas contraseñas ni claves secretas.</p></div></section></>
+function SettingsPage({ onBackup, onRestore, onResetDemo, onSeed, busy }: { onBackup:()=>void; onRestore:()=>void; onResetDemo:()=>void; onSeed:()=>void; busy:boolean }) {
+  return <><div className="module-heading"><div><div className="eyebrow">SISTEMA</div><h1>Configuración</h1><p>Respaldo, continuidad y entorno de pruebas.</p></div></div><div className="content-grid"><section className="panel setting-card"><div className="setting-icon"><FileDown/></div><h2>Respaldo local</h2><p>Descarga un archivo JSON con los datos guardados en este navegador. El respaldo puede contener información personal; protégelo.</p><button className="primary-button" onClick={onBackup}><Download size={16}/> Exportar respaldo</button></section><section className="panel setting-card"><div className="setting-icon"><FileUp/></div><h2>Restaurar respaldo</h2><p>Importa un respaldo previamente exportado en el dispositivo actual. Los registros se agregan o actualizan.</p><button className="secondary-button" onClick={onRestore}><FileUp size={16}/> Seleccionar archivo</button></section></div><section className="panel setting-card"><div className="setting-icon"><Activity/></div><h2>Modo de demostración</h2><p>Carga registros ficticios para probar miembros, pagos, asistencias, productos, ventas, compras, gastos e informes. Quedan identificados como DEMO y pueden limpiarse sin tocar los datos reales.</p><button className="primary-button" disabled={busy} onClick={onSeed}><Plus size={16}/> {busy?"Procesando…":"Cargar datos de demostración"}</button><button className="secondary-button" disabled={busy} onClick={onResetDemo}>Limpiar datos DEMO</button></section><section className="panel security-panel"><Shield/><div><h2>Seguridad y acceso</h2><p>Las cuentas son individuales. Los administradores invitan usuarios desde el módulo Usuarios y asignan el nivel Administrador o Trabajador. No compartas contraseñas ni claves secretas.</p></div></section></>
 }
-
 function AccessDenied(){return <div className="panel access-denied"><Shield size={25}/><h2>Acceso reservado al propietario</h2><p>Este módulo contiene información administrativa. Solicita al propietario que revise los permisos de tu cuenta.</p></div>}
+function UsersPage({ users, onCreate, busy }: { users:Row[]; onCreate:(payload:{full_name:string;email:string;role:'owner'|'cashier'})=>Promise<void>; busy:boolean }) {
+  const [fullName,setFullName]=useState('')
+  const [email,setEmail]=useState('')
+  const [role,setRole]=useState<'owner'|'cashier'>('cashier')
+  const [feedback,setFeedback]=useState('')
+  const [error,setError]=useState(false)
+  async function submit(event:FormEvent) {
+    event.preventDefault()
+    setFeedback('');setError(false)
+    try {
+      await onCreate({full_name:fullName.trim(),email:email.trim(),role})
+      setFeedback('Invitación enviada. La persona debe abrir su correo y crear su contraseña.')
+      setFullName('');setEmail('');setRole('cashier')
+    } catch (err) {
+      setError(true)
+      setFeedback(err instanceof Error ? err.message : 'No se pudo crear la cuenta.')
+    }
+  }
+  const roleLabel=(value:unknown)=>value==='owner'?'Administrador':'Trabajador'
+  return <><div className="module-heading"><div><div className="eyebrow">ADMINISTRACIÓN DE ACCESOS</div><h1>Usuarios</h1><p>Crea cuentas individuales y asigna el nivel de acceso de cada persona.</p></div></div>
+    <div className="users-layout"><section className="panel users-create-panel"><div className="panel-heading"><div><h2><UserPlus size={17}/> Invitar usuario</h2><p>Se enviará un correo para que configure su propia contraseña.</p></div></div>
+      <form className="users-create-form" onSubmit={submit}><label>Nombre completo<input value={fullName} onChange={e=>setFullName(e.target.value)} required minLength={2} maxLength={100} placeholder="Nombre de la persona"/></label><label>Correo electrónico<input type="email" value={email} onChange={e=>setEmail(e.target.value)} required maxLength={254} placeholder="persona@correo.com"/></label><label>Nivel de acceso<select value={role} onChange={e=>setRole(e.target.value as 'owner'|'cashier')}><option value="cashier">Trabajador · Operación diaria</option><option value="owner">Administrador · Acceso completo</option></select></label><div className="users-role-help"><Shield size={16}/><span>{role==='owner'?'El administrador puede gestionar usuarios, configuración, tarifas y todos los módulos.':'El trabajador puede operar los módulos diarios, pero no gestionar usuarios ni la configuración administrativa.'}</span></div><button className="primary-button" disabled={busy}><Mail size={16}/>{busy?'Enviando invitación…':'Enviar invitación'}</button>{feedback&&<p className={error?'users-feedback error':'users-feedback'}>{feedback}</p>}</form>
+    </section><section className="panel users-list-panel"><div className="panel-heading"><div><h2>Personal registrado</h2><p>{users.length} cuenta(s) con perfil</p></div></div>{users.length?<div className="users-list">{users.map(user=><div className="users-list-row" key={user.id}><div className="users-avatar">{String(user.full_name||'U').slice(0,1).toUpperCase()}</div><div className="users-info"><strong>{user.full_name||'Usuario'}</strong><small>{user.id}</small></div><span className={user.role==='owner'?'users-role admin':'users-role worker'}>{roleLabel(user.role)}</span><span className={user.active===false?'users-state inactive':'users-state'}>{user.active===false?'Desactivado':'Activo'}</span></div>)}</div>:<Empty text="Todavía no hay usuarios registrados."/ >}</section></div>
+  </>
+}
 function Stat({icon,label,value,change,tint}:{icon:ReactNode;label:string;value:string;change:string;tint:string}){return <div className="stat-card"><div className={`stat-icon ${tint}`}>{icon}</div><span className="stat-label">{label}</span><strong className="stat-value">{value}</strong><small className="neutral">{change}</small></div>}
 function Quick({icon,label,onClick}:{icon:ReactNode;label:string;onClick:()=>void}){return <button className="quick-action" onClick={onClick}><span>{icon}</span><strong>{label}</strong><ArrowUpRight size={15}/></button>}
 function Empty({text}:{text:string}){return <div className="empty-state"><ClipboardList size={24}/><p>{text}</p></div>}

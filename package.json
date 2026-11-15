@@ -1,5 +1,5 @@
 {
-  "name": "atlasgymroom-app-web",
+  "name": "atlasgymrun-app-web",
   "private": true,
   "version": "0.2.0",
   "type": "module",
@@ -32,8 +32,8 @@
     "electron-builder": "^26.0.12"
   },
   "build": {
-    "appId": "com.atlasgymroom.admin",
-    "productName": "Atlasgymroom Administración",
+    "appId": "com.atlasgymrun.admin",
+    "productName": "Atlasgymrun Administración",
     "directories": {
       "output": "release"
     },

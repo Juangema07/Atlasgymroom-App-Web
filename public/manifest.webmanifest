@@ -1,6 +1,6 @@
 {
-  "name": "Atlasgymroom",
-  "short_name": "Atlasgymroom",
+  "name": "Atlasgymrun",
+  "short_name": "Atlasgymrun",
   "start_url": "./",
   "display": "standalone",
   "background_color": "#0d110e",
