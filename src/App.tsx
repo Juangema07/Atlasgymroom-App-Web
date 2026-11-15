@@ -427,8 +427,9 @@ export default function App() {
         }
         setTermsRecord(activeTerms);
         const { data: acceptance, error: acceptanceError } = await supabase
-          .from('user_terms_acceptances').select('id,terms_version,accepted_at')
-          .eq('user_id', session.user.id).eq('terms_version', activeTerms.version).maybeSingle();
+          .from('user_terms_acceptances').select('id,terms_version,accepted_at,permissions_version')
+          .eq('user_id', session.user.id).eq('terms_version', activeTerms.version)
+          .eq('permissions_version', Number(profileData.permissions_version || 1)).maybeSingle();
         if (cancelled) return;
         if (acceptanceError) {
           setTermsStatus('error');
@@ -537,6 +538,7 @@ export default function App() {
     const { error } = await supabase.from('user_terms_acceptances').insert({
       user_id: session.user.id,
       terms_version: termsRecord.version,
+      permissions_version: Number(profile?.permissions_version || 1),
     });
     if (error && error.code !== '23505') {
       setTermsError(error.message || 'No se pudo guardar la aceptación.');
@@ -566,14 +568,19 @@ export default function App() {
     }
   }
 
-  async function updateStaffPermissions(userId:string, permissions:Record<string,Record<string,boolean>>) {
+  async function updateStaffPermissions(userId:string, permissions:Record<string,Record<string,boolean>>, permissionsVersion:number) {
     if (!supabase || !isOwner) throw new Error('Solo un administrador puede cambiar permisos.');
     setBusy(true);
-    const { error } = await supabase.from('profiles').update({ permissions }).eq('id',userId).eq('role','cashier');
+    const { error } = await supabase.rpc('update_user_permissions', {
+      p_user_id:userId,
+      p_permissions:permissions,
+      p_expected_version:permissionsVersion,
+    });
     setBusy(false);
     if (error) throw new Error(error.message || 'No se pudieron guardar los permisos.');
     await refresh();
-    notify('Permisos actualizados. Se aplicarán también a las siguientes solicitudes de la cuenta.');
+    const {data}=await supabase.from('user_permission_history').select('user_id,permissions_version,changed_at').eq('user_id',userId).order('changed_at',{ascending:false});
+    notify('Permisos actualizados. La persona deberá revisar y aceptar nuevamente los términos y permisos al volver a entrar.');
   }
 
   async function toggleStaffActive(user:Row) {
@@ -1009,7 +1016,7 @@ export default function App() {
         {section === 'Configuración' && (isOwner ? <SettingsPage onBackup={backup} onRestore={() => fileRef.current?.click()} onResetDemo={resetDemoData} onSeed={seedDemoData} busy={busy} /> : <AccessDenied />)}
         {section === 'Productos' && (moduleConfig ? <ProductCatalog products={filteredRows} onCreate={openCreate} onEdit={openRecord} canCreate={canModule('Productos','create')} canUpdate={canModule('Productos','update')}/> : <AccessDenied />)}
         {moduleConfig && section !== 'Productos' && <DataModule config={moduleConfig} rows={filteredRows} canCreate={canModule(section,'create')} canUpdate={canModule(section,'update')} canCharge={canModule('Pagos','create')} search={search} setSearch={setSearch} onCreate={openCreate} onEdit={openRecord} onTogglePause={toggleMemberPause} onMemberPayment={openMemberPayment} onCollectBalance={record => { const total=Number(record.total??record.total_amount??record.amount??0); setEditing(record); setForm({ amount_paid: String(Math.max(0,total-Number(record.amount_paid||0))), method: 'cash' }); setDialog('balance') }} memberName={memberName} productName={productName} planName={planName} />}
-        {section === 'Usuarios' && (isOwner ? <UsersPage users={rows.profiles || []} onCreate={createStaffUser} onUpdatePermissions={updateStaffPermissions} onToggleActive={toggleStaffActive} acceptances={userAcceptances} busy={busy} /> : <AccessDenied />)}
+        {section === 'Usuarios' && (isOwner ? <UsersPage users={rows.profiles || []} onCreate={createStaffUser} onUpdatePermissions={updateStaffPermissions} onToggleActive={toggleStaffActive} acceptances={userAcceptances} activeTermsVersion={String(termsRecord?.version||'')} busy={busy} /> : <AccessDenied />)}
         {!moduleConfig && !['Inicio','Caja','Informes','Configuración','Usuarios'].includes(section) && (canModule(section,'view') ? <PlaceholderModule title={section} /> : <AccessDenied />)}
         {section === 'Equipo' && !isOwner && <AccessDenied/>}
         <footer>© 2026 Atlasgymrun <span>Gestión clara para entrenar mejor.</span></footer>
@@ -1336,7 +1343,15 @@ function TermsAcceptance({terms,profile,onAccept,busy,error}:{terms:Row;profile:
 }
 function PermissionMatrix({value,onChange}:{value:Record<string,Record<string,boolean>>;onChange:(next:Record<string,Record<string,boolean>>)=>void}) {
   function setPermission(moduleKey:string,action:string,enabled:boolean) {
-    onChange({...value,[moduleKey]:{...(value[moduleKey]||{}),[action]:enabled}});
+    const current={...(value[moduleKey]||{})};
+    if (action==='view' && !enabled) {
+      for (const key of Object.keys(current)) current[key]=false;
+      current.view=false;
+    } else {
+      current[action]=enabled;
+      if (enabled && action!=='view') current.view=true;
+    }
+    onChange({...value,[moduleKey]:current});
   }
   return <div className="permission-matrix">
     {permissionGroups.map(group=><section className="permission-group" key={group.title}>
@@ -1356,7 +1371,7 @@ function UsersPage({ users,onCreate,busy,onUpdatePermissions,onToggleActive,acce
   users:Row[];
   onCreate:(payload:{full_name:string;email:string;role:'owner'|'cashier';permissions:Record<string,Record<string,boolean>>})=>Promise<void>;
   busy:boolean;
-  onUpdatePermissions:(id:string,permissions:Record<string,Record<string,boolean>>)=>Promise<void>;
+  onUpdatePermissions:(id:string,permissions:Record<string,Record<string,boolean>>,permissionsVersion:number)=>Promise<void>;
   onToggleActive:(user:Row)=>Promise<void>;
   acceptances:Row[];
 }) {
@@ -1381,7 +1396,7 @@ function UsersPage({ users,onCreate,busy,onUpdatePermissions,onToggleActive,acce
   async function savePermissions() {
     if(!selectedUser)return;
     try {
-      await onUpdatePermissions(selectedUser.id,editPermissions);
+      await onUpdatePermissions(selectedUser.id,editPermissions,Number(selectedUser.permissions_version||1));
       setSelectedUser(null);
       setFeedback('Permisos actualizados correctamente.');
     } catch(err) {
@@ -1393,7 +1408,8 @@ function UsersPage({ users,onCreate,busy,onUpdatePermissions,onToggleActive,acce
     catch(err) { setError(true);setFeedback(err instanceof Error?err.message:'No se pudo cambiar el estado.'); }
   }
   const roleLabel=(value:unknown)=>value==='owner'?'Administrador':'Trabajador';
-  const acceptanceByUser=new Map(acceptances.map(item=>[item.user_id,item]));
+  const acceptanceByUser=new Map<string,Row>();
+  for (const item of acceptances) if (!acceptanceByUser.has(String(item.user_id))) acceptanceByUser.set(String(item.user_id),item);
   return <>
     <div className="module-heading"><div><div className="eyebrow">ADMINISTRACIÓN DE ACCESOS</div><h1>Usuarios y permisos</h1><p>Invita personas, asigna el acceso exacto y consulta quién aceptó las condiciones.</p></div></div>
     <div className="users-layout">
