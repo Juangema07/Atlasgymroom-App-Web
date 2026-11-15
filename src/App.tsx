@@ -767,29 +767,57 @@ export default function App() {
   }
 
   async function submitBalancePayment(event: FormEvent) {
-    event.preventDefault()
-    if (!editing) return
-    const due = Math.max(0, Number(editing.amount || 0) - Number(editing.amount_paid || 0))
-    const amount = Number(form.amount_paid || 0)
-    if (amount <= 0 || amount > due) { notify('El abono debe ser mayor que cero y no superar el saldo pendiente.'); return }
-    const cashMovementId = makeId()
-    const nextPaid = Number(editing.amount_paid || 0) + amount
-    const updated: Row = { ...editing, amount_paid: nextPaid, status: nextPaid >= Number(editing.amount) ? 'paid' : 'partial', paid_at: nextPaid >= Number(editing.amount) ? nowIso() : editing.paid_at, updated_at: nowIso() }
-    const member = rows.members?.find(m => m.id === editing.member_id)
-    const plan = rows.plans?.find(p => p.id === editing.plan_id)
-    const optimistic: { table: EntityTable; row: Row }[] = [
-      { table: 'payments', row: updated },
-      { table: 'cash_movements', row: { id: cashMovementId, cash_session_id: activeSession?.id || null, direction: 'income', amount, method: form.method || 'cash', description: 'Abono a cuenta por cobrar', reference_id: editing.id, created_by: session?.user.id || null, created_at: nowIso() } },
-    ]
-    if (nextPaid >= Number(editing.amount) && member && plan) {
-      const beginDate = member.end_date && member.end_date >= today() && member.status === 'active' ? datePlusDays(String(member.end_date), 1) : today()
-      optimistic.push({ table: 'members', row: { ...member, current_plan_id: plan.id, start_date: beginDate, end_date: datePlusDays(beginDate, Number(plan.duration_days) - 1), status: 'active', paused_at: null, updated_at: nowIso() } })
+    event.preventDefault();
+    if (!editing) return;
+    const isSale = section === 'Cuentas por Cobrar Ventas';
+    const isPurchase = section === 'Cuentas por Pagar Compras';
+    const amountField = isSale ? 'total' : isPurchase ? 'total_amount' : 'amount';
+    const total = Number(editing[amountField] || 0);
+    const due = Math.max(0,total-Number(editing.amount_paid||0));
+    const amount = Number(form.amount_paid||0);
+    if (!Number.isFinite(amount) || amount<=0 || amount>due) {
+      notify('El abono debe ser mayor que cero y no superar el saldo pendiente.'); return;
     }
-    setBusy(true)
-    const result = await runBusinessRpc('collect_payment_balance', { p_payment_id: editing.id, p_amount: amount, p_method: form.method || 'cash', p_cash_movement_id: cashMovementId }, optimistic)
-    setBusy(false); setDialog(null); setEditing(null)
-    notify(result.message || (result.synced ? 'Abono registrado correctamente.' : 'Abono guardado localmente, pendiente de sincronización.'))
-    await refresh()
+    const cashMovementId = makeId();
+    const nextPaid = Number(editing.amount_paid||0)+amount;
+    const updated: Row = {
+      ...editing,amount_paid:nextPaid,
+      status:nextPaid>=total?'paid':'partial',
+      paid_at:!isSale&&!isPurchase&&nextPaid>=total?nowIso():editing.paid_at,
+      updated_at:nowIso(),
+    };
+    const movement: Row = {
+      id:cashMovementId,cash_session_id:activeSession?.id||null,
+      direction:isPurchase?'expense':'income',amount,method:form.method||'cash',
+      description:isSale?'Abono a cuenta por cobrar de venta':isPurchase?'Abono a cuenta por pagar de compra':'Abono a cuenta por cobrar',
+      reference_id:editing.id,created_by:session?.user.id||null,created_at:nowIso(),
+    };
+    const table: EntityTable = isSale?'sales':isPurchase?'purchases':'payments';
+    const optimistic: {table:EntityTable;row:Row}[] = [
+      {table,row:updated},
+      {table:'cash_movements',row:movement},
+    ];
+    if (!isSale && !isPurchase && nextPaid>=total) {
+      const member=rows.members?.find(m=>m.id===editing.member_id);
+      const plan=rows.plans?.find(p=>p.id===editing.plan_id);
+      if(member&&plan){
+        const beginDate=member.end_date&&member.end_date>=today()&&member.status==='active'?datePlusDays(String(member.end_date),1):today();
+        optimistic.push({table:'members',row:{...member,current_plan_id:plan.id,start_date:beginDate,end_date:datePlusDays(beginDate,Number(plan.duration_days)-1),status:'active',paused_at:null,updated_at:nowIso()}});
+      }
+    }
+    const rpc = isSale?'collect_sales_balance':isPurchase?'collect_purchase_balance':'collect_payment_balance';
+    const args = isSale
+      ? {p_sale_id:editing.id,p_amount:amount,p_method:form.method||'cash',p_cash_movement_id:cashMovementId}
+      : isPurchase
+        ? {p_purchase_id:editing.id,p_amount:amount,p_method:form.method||'cash',p_cash_movement_id:cashMovementId}
+        : {p_payment_id:editing.id,p_amount:amount,p_method:form.method||'cash',p_cash_movement_id:cashMovementId};
+    setBusy(true);
+    const result = await runBusinessRpc(rpc,args,optimistic);
+    setBusy(false);
+    if (result.message?.startsWith('El servidor rechazó')) { notify(result.message); return; }
+    setDialog(null);setEditing(null);
+    notify(result.message||(result.synced?'Abono registrado correctamente.':'Abono guardado localmente, pendiente de sincronización.'));
+    await refresh();
   }
 
   async function submitDayPass(event: FormEvent) {
