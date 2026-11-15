@@ -951,9 +951,12 @@ export default function App() {
     else openRecord()
   }
 
-  if (authLoading) return <div className="auth-screen"><div className="auth-card"><div className="brand-mark"><Dumbbell/></div><p>Comprobando acceso seguro…</p></div></div>
+  if (authLoading || (supabaseConfigured && session && (profileLoading || termsStatus==='loading'))) return <div className="auth-screen"><div className="auth-card"><div className="brand-mark"><Dumbbell/></div><p>Comprobando permisos y aceptación…</p></div></div>
   if (supabaseConfigured && recoveryMode && session) return <PasswordRecovery onSave={saveNewPassword} busy={busy} toast={toast} />
   if (supabaseConfigured && !session) return <Login onSignIn={signIn} onForgotPassword={requestPasswordRecovery} busy={busy} toast={toast} />
+  if (supabaseConfigured && session && termsStatus==='error') return <AccountHold message={termsError || 'No se pudo verificar el estado de tu cuenta.'} onSignOut={signOut}/>
+  if (supabaseConfigured && session && profile?.active===false) return <AccountDisabled onSignOut={signOut}/>
+  if (supabaseConfigured && session && termsStatus==='required' && termsRecord) return <TermsAcceptance terms={termsRecord} profile={profile || {}} onAccept={acceptTerms} busy={termsBusy} error={termsError}/>
     const members = rows.members || []
   const recentPayments = rows.payments || []
   const activeMembers = members.filter(m => m.status === 'active' && (!m.end_date || m.end_date >= today())).length
@@ -1300,7 +1303,33 @@ function Reports({ rows }: { rows:Record<string,Row[]> }) {
 function SettingsPage({ onBackup, onRestore, onResetDemo, onSeed, busy }: { onBackup:()=>void; onRestore:()=>void; onResetDemo:()=>void; onSeed:()=>void; busy:boolean }) {
   return <><div className="module-heading"><div><div className="eyebrow">SISTEMA</div><h1>Configuración</h1><p>Respaldo, continuidad y entorno de pruebas.</p></div></div><div className="content-grid"><section className="panel setting-card"><div className="setting-icon"><FileDown/></div><h2>Respaldo local</h2><p>Descarga un archivo JSON con los datos guardados en este navegador. El respaldo puede contener información personal; protégelo.</p><button className="primary-button" onClick={onBackup}><Download size={16}/> Exportar respaldo</button></section><section className="panel setting-card"><div className="setting-icon"><FileUp/></div><h2>Restaurar respaldo</h2><p>Importa un respaldo previamente exportado en el dispositivo actual. Los registros se agregan o actualizan.</p><button className="secondary-button" onClick={onRestore}><FileUp size={16}/> Seleccionar archivo</button></section></div><section className="panel setting-card"><div className="setting-icon"><Activity/></div><h2>Modo de demostración</h2><p>Carga registros ficticios para probar miembros, pagos, asistencias, productos, ventas, compras, gastos e informes. Quedan identificados como DEMO y pueden limpiarse sin tocar los datos reales.</p><button className="primary-button" disabled={busy} onClick={onSeed}><Plus size={16}/> {busy?"Procesando…":"Cargar datos de demostración"}</button><button className="secondary-button" disabled={busy} onClick={onResetDemo}>Limpiar datos DEMO</button></section><section className="panel security-panel"><Shield/><div><h2>Seguridad y acceso</h2><p>Las cuentas son individuales. Los administradores invitan usuarios desde el módulo Usuarios y asignan el nivel Administrador o Trabajador. No compartas contraseñas ni claves secretas.</p></div></section></>
 }
-function AccessDenied(){return <div className="panel access-denied"><Shield size={25}/><h2>Acceso reservado al propietario</h2><p>Este módulo contiene información administrativa. Solicita al propietario que revise los permisos de tu cuenta.</p></div>}
+function AccessDenied(){return <div className="panel access-denied"><Shield size={25}/><h2>No tienes permiso para este apartado</h2><p>El administrador puede habilitar la consulta o las acciones necesarias desde Usuarios y permisos.</p></div>}
+
+function AccountHold({message,onSignOut}:{message:string;onSignOut:()=>void}) {
+ return <div className="auth-screen"><section className="auth-card"><div className="brand-mark"><Shield/></div><div className="eyebrow">ATLASGYMRUN · ACCESO</div><h1>No se pudo validar tu cuenta</h1><p>{message}</p><button className="primary-button auth-submit" onClick={onSignOut}>Cerrar sesión</button></section></div>;
+}
+function AccountDisabled({onSignOut}:{onSignOut:()=>void}) {
+ return <div className="auth-screen"><section className="auth-card"><div className="brand-mark"><Shield/></div><div className="eyebrow">ATLASGYMRUN · ACCESO</div><h1>Cuenta desactivada</h1><p>El administrador desactivó este acceso. Ponte en contacto con el responsable del gimnasio si consideras que se trata de un error.</p><button className="primary-button auth-submit" onClick={onSignOut}>Cerrar sesión</button></section></div>;
+}
+function TermsAcceptance({terms,profile,onAccept,busy,error}:{terms:Row;profile:Row;onAccept:()=>void;busy:boolean;error:string}) {
+ const [checked,setChecked]=useState(false);
+ const role=profile.role==='owner'?'Administrador':'Trabajador';
+ const allowed=permissionGroups.map(group=>({...group,modules:group.modules.filter(module=>module.actions.some(action=>profile.role==='owner'||profile.permissions?.[module.key]?.[action]===true))})).filter(group=>group.modules.length);
+ return <div className="terms-screen"><section className="terms-card">
+   <div className="brand"><div className="brand-mark"><Dumbbell size={21}/></div><div><strong>ATLAS<span>GYMRUN</span></strong><small>GESTIÓN DE GIMNASIO</small></div></div>
+   <div className="eyebrow">PRIMER ACCESO · ACEPTACIÓN DIGITAL</div><h1>{terms.title||'Términos y condiciones de uso'}</h1>
+   <p className="terms-intro">Antes de entrar, revisa las condiciones de uso y los permisos que el administrador asignó a tu cuenta.</p>
+   <div className="terms-version">Versión {terms.version} · Perfil: {role}</div>
+   <div className="terms-body">{String(terms.body||'').split('\n').map((line,index)=><p key={index}>{line||' '}</p>)}</div>
+   <section className="terms-permissions"><h2>Permisos de esta cuenta</h2>
+     {profile.role==='owner'?<p>Tu cuenta de administrador tiene acceso completo a todos los apartados y acciones.</p>:allowed.length?allowed.map(group=><div key={group.title}><strong>{group.title}</strong><ul>{group.modules.map(module=><li key={module.key}>{module.label}: {module.actions.filter(action=>profile.permissions?.[module.key]?.[action]===true).map(action=>actionLabels[action]).join(', ')}</li>)}</ul></div>):<p>Tu cuenta no tiene módulos habilitados. El administrador debe asignar permisos antes de que puedas trabajar.</p>}
+   </section>
+   <label className="terms-check"><input type="checkbox" checked={checked} onChange={event=>setChecked(event.target.checked)}/><span>He leído y acepto estos términos y el alcance de los permisos mostrados para mi cuenta.</span></label>
+   {error&&<div className="auth-error">{error}</div>}
+   <button className="primary-button auth-submit" disabled={!checked||busy} onClick={onAccept}>{busy?'Guardando aceptación…':'Aceptar y continuar'}</button>
+   <small>La aceptación queda asociada a tu usuario, la versión mostrada y la fecha registrada por el servidor.</small>
+ </section></div>;
+}
 function PermissionMatrix({value,onChange}:{value:Record<string,Record<string,boolean>>;onChange:(next:Record<string,Record<string,boolean>>)=>void}) {
   function setPermission(moduleKey:string,action:string,enabled:boolean) {
     onChange({...value,[moduleKey]:{...(value[moduleKey]||{}),[action]:enabled}});
