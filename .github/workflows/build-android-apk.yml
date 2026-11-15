@@ -26,7 +26,10 @@ jobs:
       - run: npm install
         env:
           ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
-      - run: npm run build
+      - name: Build bundled Android interface
+        run: npm run build
+        env:
+          CAPACITOR_BUILD: 'true'
       - run: npx cap add android
       - run: npx cap sync android
       - name: Build APK
@@ -42,6 +45,6 @@ jobs:
         with:
           tag_name: android-v0.2.0
           name: Atlasgymrun Android v0.2.0
-          body: Instalador APK de prueba para Android. Requiere conexión a internet y usa la aplicación web alojada.
+          body: Instalador APK de Atlasgymrun con interfaz empaquetada localmente. La sincronización de datos utiliza el backend compartido y requiere conexión para sincronizar.
           files: android/app/build/outputs/apk/debug/app-debug.apk
           make_latest: false
