@@ -10,7 +10,7 @@ import {
 } from 'lucide-react'
 import { supabase, supabaseConfigured } from './lib/supabase'
 import {
-  exportLocalBackup, importLocalBackup, listRows, queueStatus, resetLocalTestData, runBusinessRpc,
+  exportLocalBackup, importLocalBackup, listRows, queueStatus, runBusinessRpc,
   saveRow, syncPending, updateRow,
 } from './lib/data'
 import { makeId, nowIso, type EntityTable, type Row } from './lib/localdb'
