@@ -370,3 +370,37 @@ table tr:hover td{background:#1c2834}
 @media(max-width:900px){.main-content{margin-left:0}.pos-screen{grid-template-columns:1fr}.pos-receipt{position:static}.analytics-grid,.command-lower-grid{grid-template-columns:1fr}.content-area,.page{padding-left:15px;padding-right:15px}}
 @media(max-width:680px){.command-dock{grid-template-columns:repeat(2,minmax(0,1fr));margin:10px 12px;padding:9px;gap:7px}.command-dock-title{grid-column:1/-1}.command-tile{padding:9px}.command-tile strong{font-size:9px}.command-tile small{white-space:normal}.front-desk-bar{margin:11px 0 13px}.control-room-heading{align-items:flex-start;gap:8px}.control-room-heading h1{font-size:21px}.control-room-status{font-size:8px;padding:6px 8px;white-space:nowrap}.overview-metrics{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.overview-card{padding:12px}.overview-card>strong{font-size:21px}.analytics-panel{padding:12px}.action-panel .quick-grid{grid-template-columns:repeat(2,1fr)}.finance-periods{grid-template-columns:repeat(2,1fr)}.pos-screen{gap:12px}.pos-catalog{padding:8px}.pos-product-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.pos-product-art{height:95px}.pos-product-meta{padding:7px}.pos-product-meta>strong{font-size:9px}.pos-product-meta>div{align-items:flex-start;flex-direction:column}.pos-product-meta b{font-size:10px}.cart-line{grid-template-columns:minmax(0,1fr) auto auto 22px;gap:5px;padding:8px 6px}.cart-product img,.cart-mini-placeholder{width:29px;height:29px}.cart-quantity{gap:4px}.cart-quantity button{width:21px;height:21px}.cart-line-total{font-size:9px}.product-shelf-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.shelf-product-image{height:112px}.shelf-product-info{padding:8px}.shelf-product-info>div{flex-direction:column;align-items:flex-start}.image-upload-panel{flex-wrap:wrap}.image-upload-panel>small{width:100%}.reset-test-panel{align-items:flex-start;flex-wrap:wrap}.reset-test-panel .danger-button{width:100%}.entry-cash-form{max-width:none}}
 @media print{.sidebar,.topbar,.command-dock,.front-desk-bar{display:none!important}.main-content{margin:0}.analytics-panel,.overview-card{break-inside:avoid}}
+
+
+/* Responsive refinements for small screens and long forms */
+@media(max-width:720px){
+  .page,.content-area,.main-content{min-width:0}
+  .module-heading{align-items:stretch;gap:10px}
+  .module-heading>div{min-width:0;flex:1 1 100%}
+  .module-heading>.primary-button,.module-heading>.secondary-button{flex:1 1 auto;min-height:40px;white-space:normal}
+  .table-toolbar{flex-wrap:wrap}
+  .search-box{flex:1 1 150px;min-width:0}
+  .search-box input{width:100%;min-width:0}
+  .table-wrap{overscroll-behavior-x:contain;-webkit-overflow-scrolling:touch}
+  .data-panel .table-wrap table{min-width:640px}
+  .form-grid{grid-template-columns:minmax(0,1fr)}
+  .field,.field.full,.form-hint.full,.form-actions{min-width:0;grid-column:1/-1}
+  .modal-backdrop{padding:8px;align-items:center}
+  .modal{width:100%;max-height:calc(100dvh - 16px);padding:14px;overscroll-behavior:contain}
+  .form-actions{position:sticky;bottom:-14px;z-index:2}
+  .lookup-results{max-width:100%;overflow-wrap:anywhere}
+  .lookup-results button{align-items:flex-start;flex-direction:column}
+  .lookup-results button b{white-space:normal}
+  .lookup-member-row>span{min-width:0;overflow-wrap:anywhere}
+  .member-modal-actions .secondary-button{min-height:38px}
+}
+@media(max-width:390px){
+  .page{padding-left:10px;padding-right:10px}
+  .topbar{padding-left:9px;padding-right:9px}
+  .breadcrumb{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .topbar-actions{gap:4px}
+  .module-heading h1{font-size:21px;overflow-wrap:anywhere}
+  .table-toolbar{align-items:stretch}
+  .module-count{align-self:center}
+  .modal-heading h2{font-size:14px}
+}
