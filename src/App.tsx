@@ -821,6 +821,7 @@ function DataModule({ config, rows, isOwner, search, setSearch, onCreate, onEdit
   const valueFor = (row:Row,key:string) => {
     const value = row[key]
     if (key === 'member_id') return memberName(value)
+    if (key === 'document_type') return documentTypeLabel(value)
     if (key === 'product_id') return productName(value)
     if (key === 'plan_id' || key === 'current_plan_id') return planName(value)
     if (key.includes('amount') || key === 'price' || key === 'cost' || key === 'total') return formatMoney(value)
