@@ -114,3 +114,12 @@ La aplicación no debe considerarse producción hasta completar estas pruebas en
 - El acceso de reinicio total fue retirado de la interfaz y su función SQL quedó restringida a `service_role`.
 - La caché local se reconcilia con las filas visibles para la sesión autenticada y se impide cerrar sesión desde la interfaz mientras haya movimientos pendientes de sincronización.
 - La protección contra contraseñas filtradas debe activarse en Supabase Dashboard → Authentication → Settings → Password Security. No se puede activar desde el código cliente.
+
+
+### Requisitos de publicación segura
+
+- Configura un servidor SMTP propio en Supabase Auth para que las invitaciones puedan llegar a correos externos al equipo del proyecto; el envío integrado de pruebas tiene límites.
+- En Authentication → URL Configuration, establece como Site URL la URL pública de Atlasgymrun y agrega esa URL a Redirect URLs.
+- En Authentication → Settings → Password Security, activa la protección contra contraseñas filtradas.
+- El repositorio GitHub sigue siendo público en este momento. Cámbialo a privado antes de introducir datos personales, documentos o información operativa del gimnasio.
+- La copia JSON del navegador es una medida manual de contingencia, no un backup automático del servidor. Configura backups programados de Supabase o una política externa independiente antes de operar como sistema principal.
