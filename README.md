@@ -1,4 +1,4 @@
-# Atlasgymroom App Web
+# Atlasgymrun App Web
 
 Aplicación de administración para un gimnasio de una sede. Incluye panel, socios, planes, pagos, asistencia, pases diarios, ventas, inventario, compras, gastos, caja, informes, PWA y cola de operaciones offline de un dispositivo.
 
@@ -21,7 +21,7 @@ Aplicación de administración para un gimnasio de una sede. Incluye panel, soci
 - Cobro de entrada general: registra la tarifa diaria de $4.000 sin pedir nombre, cédula ni ficha de cliente; se refleja en asistencia, caja y movimientos.
 - Imágenes de productos: modo local usa imágenes optimizadas en el almacenamiento local; con Supabase utiliza el bucket `product-images`.
 - El tablero incluye tendencias de ingresos de siete días, ventas agrupadas por categoría, indicadores y accesos inmediatos.
-- Configuración incluye un reinicio explícito para datos de prueba; borra registros operativos conservando usuarios y tarifas. Requiere escribir `REINICIAR`; en Supabase se restringe al propietario.
+- Configuración permite cargar y limpiar registros ficticios DEMO sin tocar datos reales. El reinicio total de registros operativos no está disponible desde la interfaz.
 - Los módulos auxiliares usan la tabla genérica `gym_records` y ofrecen altas, consulta, edición y búsqueda. No equivalen todavía a sistemas especializados de rutinas con ejercicios prescritos, envío de correos, reservas con cupos ni documentos electrónicos DIAN.
 - Los módulos de kardex y movimientos de inventario son de consulta. La creación de ajustes de stock con aprobación y motivo queda pendiente de una operación transaccional específica.
 
@@ -52,12 +52,12 @@ Para modo local sin backend, deja vacías las variables de Supabase. Se mostrar�
    ```
 5. Copiar Project URL y Publishable key desde el panel **Connect**.
 6. Guardarlas como `VITE_SUPABASE_URL` y `VITE_SUPABASE_PUBLISHABLE_KEY` en `.env.local` para desarrollo. Para GitHub Pages, créalas también en **Settings → Secrets and variables → Actions → Variables** con esos mismos nombres. El workflow de publicación las inyecta durante la compilación.
-7. Crear los empleados desde Authentication → Users. El trigger crea su perfil como `cashier`. No compartir cuentas.
+7. Crear usuarios desde el módulo Usuarios de la aplicación. El administrador envía una invitación por correo y asigna Administrador o Trabajador. Configurar SMTP y la URL del sitio en Authentication → URL Configuration para que los enlaces de invitación regresen a la web. No compartir cuentas.
 8. Nunca colocar `service_role` ni claves secretas en variables `VITE_*`.
 
 ## 3. Publicación
 
-El proyecto está configurado para `https://<usuario>.github.io/Atlasgymroom-App-Web/`. El workflow de Pages ya está en el repositorio, pero el propietario debe activar Pages y configurar el entorno. GitHub Pages es solo alojamiento estático: no reemplaza Supabase.
+El proyecto está configurado para `https://<usuario>.github.io/Atlasgymrun-App-Web/`. El workflow de Pages ya está en el repositorio, pero el propietario debe activar Pages y configurar el entorno. GitHub Pages es solo alojamiento estático: no reemplaza Supabase.
 
 La aplicación requiere que las variables de entorno estén presentes al compilar. Las claves públicas son visibles en el navegador por diseño; la protección real de datos depende de Auth y RLS.
 
@@ -105,3 +105,12 @@ La aplicación no debe considerarse producción hasta completar estas pruebas en
 - Los horarios/días y los campos tributarios se almacenan como configuración de la tarifa; esta versión todavía no genera factura electrónica ni calcula/declarara impuestos DIAN.
 - El menú conserva los nombres de Administración, Pagos, Ventas, Clientes, Terceros, Egresos, Productos y Reservaciones. Los apartados de evoluciones, rutinas, ejercicios, documentos soporte, notas, reservas y configuraciones avanzadas están señalados como módulos pendientes, no como funciones listas.
 - Los tickets se dejan inactivos hasta que el dueño configure su precio real y los active; no se inventaron precios para esos tickets.
+
+
+## Gestión segura de usuarios y cierres
+
+- El módulo Usuarios invita por correo a nuevas cuentas y asigna Administrador (`owner`) o Trabajador (`cashier`). La Edge Function valida el JWT y el perfil activo del administrador antes de utilizar la clave de servicio del lado servidor.
+- El cierre de caja conserva quién abrió y quién cerró la sesión, calcula el efectivo esperado desde los movimientos del servidor y genera un informe imprimible en formato A4.
+- El acceso de reinicio total fue retirado de la interfaz y su función SQL quedó restringida a `service_role`.
+- La caché local se reconcilia con las filas visibles para la sesión autenticada y se impide cerrar sesión desde la interfaz mientras haya movimientos pendientes de sincronización.
+- La protección contra contraseñas filtradas debe activarse en Supabase Dashboard → Authentication → Settings → Password Security. No se puede activar desde el código cliente.
