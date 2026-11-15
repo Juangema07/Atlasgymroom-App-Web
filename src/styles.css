@@ -478,3 +478,12 @@ table tr:hover td{background:#1c2834}
 .admin-record-actions{display:flex;gap:6px;margin-top:12px;padding-top:10px;border-top:1px solid #344451}
 .admin-record-actions .table-action{min-width:31px;min-height:30px}
 @media(max-width:680px){.admin-data-toolbar{align-items:stretch;padding:11px}.admin-data-summary{width:100%}.admin-data-toolbar .search-box{flex-basis:100%}.admin-view-switch{width:max-content}.admin-record-grid{grid-template-columns:1fr;padding:10px}.admin-record-card dl{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+
+/* Atlasgymrun: tablas administrativas con ordenamiento accesible */
+.table-sort-button{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;padding:0;border:0;background:transparent;color:inherit;font:inherit;font-weight:800;text-align:left;cursor:pointer}
+.table-sort-button:hover{color:#b6e77a}
+.table-sort-button span{color:#b6e77a;font-size:11px;line-height:1}
+.admin-clear-search{display:inline-flex;align-items:center;gap:5px;min-height:34px;padding:0 9px;border:1px solid #344451;border-radius:8px;background:#17232d;color:#9eacb7;font:inherit;font-size:9px;font-weight:700;white-space:nowrap}
+.admin-clear-search:hover{border-color:#b6e77a;color:#d7f2b0}
+@media(max-width:680px){.admin-clear-search{min-height:38px}}
