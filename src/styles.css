@@ -487,3 +487,10 @@ table tr:hover td{background:#1c2834}
 .admin-clear-search{display:inline-flex;align-items:center;gap:5px;min-height:34px;padding:0 9px;border:1px solid #344451;border-radius:8px;background:#17232d;color:#9eacb7;font:inherit;font-size:9px;font-weight:700;white-space:nowrap}
 .admin-clear-search:hover{border-color:#b6e77a;color:#d7f2b0}
 @media(max-width:680px){.admin-clear-search{min-height:38px}}
+
+
+/* Panel lateral para altas y edición de registros */
+.modal-drawer-backdrop{place-items:stretch end;padding:12px}
+.modal.modal-drawer{width:min(560px,100%);height:calc(100vh - 24px);max-height:calc(100vh - 24px);border-radius:14px;animation:atlas-drawer-in .18s ease-out}
+@keyframes atlas-drawer-in{from{transform:translateX(22px);opacity:.75}to{transform:translateX(0);opacity:1}}
+@media(max-width:720px){.modal-drawer-backdrop{place-items:stretch end;padding:0}.modal.modal-drawer{width:100%;height:100dvh;max-height:100dvh;border-radius:0;border-left:0;border-right:0}}
