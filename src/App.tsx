@@ -1173,7 +1173,7 @@ function PlaceholderModule({ title }: { title: Section }) {
   return <section className="panel placeholder-module"><div className="eyebrow">MÓDULO DEL SISTEMA</div><h1>{title}</h1><p>{descriptions[title] || 'Este apartado conserva el nombre y la organización del programa actual.'}</p><div className="placeholder-note"><Shield size={17}/> Se activará cuando tenga sus tablas, permisos y pruebas completas.</div></section>
 }
 
-function DataModule({ config, rows, isOwner, search, setSearch, onCreate, onEdit, onTogglePause, onMemberPayment, onCollectBalance, memberName, productName, planName }: { config: ModuleConfig; rows: Row[]; isOwner:boolean; search:string; setSearch:(v:string)=>void; onCreate:()=>void; onEdit:(row:Row)=>void; onTogglePause:(row:Row)=>void; onMemberPayment:(row:Row)=>void; onCollectBalance:(row:Row)=>void; memberName:(id:unknown)=>string; productName:(id:unknown)=>string; planName:(id:unknown)=>string }) {
+function DataModule({ config, rows, canCreate, canUpdate, canCharge, search, setSearch, onCreate, onEdit, onTogglePause, onMemberPayment, onCollectBalance, memberName, productName, planName }: { config: ModuleConfig; rows: Row[]; canCreate:boolean; canUpdate:boolean; canCharge:boolean; search:string; setSearch:(v:string)=>void; onCreate:()=>void; onEdit:(row:Row)=>void; onTogglePause:(row:Row)=>void; onMemberPayment:(row:Row)=>void; onCollectBalance:(row:Row)=>void; memberName:(id:unknown)=>string; productName:(id:unknown)=>string; planName:(id:unknown)=>string }) {
   const [layout,setLayout]=useState<'table'|'cards'>('table')
   const [quickFilter,setQuickFilter]=useState('all')
   const [sort,setSort]=useState<{key:string;direction:'asc'|'desc'}>({key:'',direction:'asc'})
@@ -1184,6 +1184,8 @@ function DataModule({ config, rows, isOwner, search, setSearch, onCreate, onEdit
     if (key === 'member_id') return memberName(value)
     if (key === 'document_type') return documentTypeLabel(value)
     if (key === 'product_id') return productName(value)
+    if (key === 'detail_product_id') return productName(row.details?.product_id)
+    if (key.startsWith('detail_')) return row.details?.[key.slice(7)] ?? '—'
     if (key === 'plan_id' || key === 'current_plan_id') return planName(value)
     if (key.includes('amount') || key === 'price' || key === 'cost' || key === 'total') return formatMoney(value)
     if (key.includes('date') || key.endsWith('_at')) return formatDate(value)
@@ -1195,8 +1197,8 @@ function DataModule({ config, rows, isOwner, search, setSearch, onCreate, onEdit
     return value == null || value === '' ? '—' : String(value)
   }
 
-  const canEdit = config.table === 'members' || config.table === 'gym_records' || (isOwner && (config.table === 'plans' || config.table === 'products'))
-  const showActions = canEdit || config.table === 'payments'
+  const canEdit = canUpdate && ['members','gym_records','plans','products'].includes(config.table)
+  const showActions = canEdit || (canCharge && config.table === 'members') || (canUpdate && ['payments','sales','purchases'].includes(config.table))
   const filterOptions = config.table === 'members'
     ? [{value:'all',label:'Todos'},{value:'active',label:'Activos'},{value:'expiring',label:'Por vencer'},{value:'expired',label:'Vencidos'},{value:'paused',label:'Pausados'},{value:'inactive',label:'Inactivos'}]
     : config.table === 'payments'
@@ -1234,9 +1236,9 @@ function DataModule({ config, rows, isOwner, search, setSearch, onCreate, onEdit
   }) : visibleRows
 
   const toggleSort = (key:string) => setSort(current => ({key,direction:current.key===key && current.direction==='asc'?'desc':'asc'}))
-  const actionsFor = (row:Row) => <>{canEdit && <button className="table-action" onClick={()=>onEdit(row)} title="Editar registro"><Pencil size={14}/></button>}{config.table==='members' && <><button className="table-action" onClick={()=>onMemberPayment(row)} title="Registrar pago"><CircleDollarSign size={14}/></button><button className="table-action" onClick={()=>onTogglePause(row)} title={row.paused_at?'Reactivar actividad':'Pausar actividad'}>{row.paused_at?<Play size={14}/>:<Pause size={14}/>}</button></>}{config.table==='payments' && Number(row.amount||0)>Number(row.amount_paid||0) && row.status!=='voided' && <button className="table-action" onClick={()=>onCollectBalance(row)} title="Cobrar saldo">Abonar</button>}</>
+  const actionsFor = (row:Row) => <>{canEdit && <button className="table-action" onClick={()=>onEdit(row)} title="Editar registro"><Pencil size={14}/></button>}{config.table==='members' && <>{canCharge && <button className="table-action" onClick={()=>onMemberPayment(row)} title="Registrar pago"><CircleDollarSign size={14}/></button>}{canUpdate && <button className="table-action" onClick={()=>onTogglePause(row)} title={row.paused_at?'Reactivar actividad':'Pausar actividad'}>{row.paused_at?<Play size={14}/>:<Pause size={14}/>}</button>}</>}{canUpdate && ['payments','sales','purchases'].includes(config.table) && Number(row[config.table==='sales'?'total':config.table==='purchases'?'total_amount':'amount']||0)>Number(row.amount_paid||0) && row.status!=='voided' && <button className="table-action" onClick={()=>onCollectBalance(row)} title="Registrar abono">Abonar</button>}</>
 
-  return <><div className="module-heading"><div><div className="eyebrow">GESTIÓN</div><h1>{config.title}</h1><p>{config.description}</p></div>{config.fields.length > 0 && config.title !== 'Congelar pagos' && (config.table !== 'plans' && config.table !== 'products' || isOwner) && <button className="primary-button" onClick={onCreate}><Plus size={16}/> Nuevo registro</button>}{config.table === 'day_passes' && <button className="primary-button" onClick={onCreate}><Plus size={16}/> Nuevo pase</button>}{config.table === 'payments' && <button className="primary-button" onClick={onCreate}><Plus size={16}/> Registrar pago</button>}{config.table === 'sales' && <button className="primary-button" onClick={onCreate}><Plus size={16}/> Nueva venta</button>}{config.table === 'purchases' && <button className="primary-button" onClick={onCreate}><Plus size={16}/> Registrar compra</button>}{config.table === 'expenses' && <button className="primary-button" onClick={onCreate}><Plus size={16}/> Registrar gasto</button>}</div>
+  return <><div className="module-heading"><div><div className="eyebrow">GESTIÓN</div><h1>{config.title}</h1><p>{config.description}</p></div>{canCreate && config.fields.length > 0 && config.title !== 'Congelar pagos' && <button className="primary-button" onClick={onCreate}><Plus size={16}/> Nuevo registro</button>}{canCreate && config.table === 'day_passes' && <button className="primary-button" onClick={onCreate}><Plus size={16}/> Nuevo pase</button>}{canCreate && config.table === 'payments' && <button className="primary-button" onClick={onCreate}><Plus size={16}/> Registrar pago</button>}{canCreate && config.table === 'sales' && <button className="primary-button" onClick={onCreate}><Plus size={16}/> Nueva venta</button>}{canCreate && config.table === 'purchases' && <button className="primary-button" onClick={onCreate}><Plus size={16}/> Registrar compra</button>}{canCreate && config.table === 'expenses' && <button className="primary-button" onClick={onCreate}><Plus size={16}/> Registrar gasto</button>}</div>
     <section className="panel data-panel admin-data-panel">
       <div className="admin-data-toolbar">
         <div className="admin-data-summary"><strong>{orderedRows.length}</strong><span>de {rows.length} registro(s)</span></div>
