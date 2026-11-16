@@ -426,7 +426,7 @@ export default function App() {
           setTermsError(termsQueryError?.message || 'No hay una versión activa de los términos.');
           return;
         }
-        setTermsRecord(activeTerms);
+        setTermsRecord({...activeTerms,id:String(activeTerms.version)});
         const { data: acceptance, error: acceptanceError } = await supabase
           .from('user_terms_acceptances').select('id,terms_version,accepted_at,permissions_version')
           .eq('user_id', session.user.id).eq('terms_version', activeTerms.version)
@@ -440,12 +440,12 @@ export default function App() {
         setTermsStatus(acceptance ? 'accepted' : 'required');
         if (profileData.role === 'owner') {
           const { data: allAcceptances } = await supabase
-            .from('user_terms_acceptances').select('user_id,terms_version,accepted_at,permissions_version')
+            .from('user_terms_acceptances').select('id,user_id,terms_version,accepted_at,permissions_version')
             .order('accepted_at', { ascending:false });
           if (!cancelled && allAcceptances) setUserAcceptances(allAcceptances as Row[]);
           const { data: historyRows } = await supabase
             .from('user_permission_history')
-            .select('user_id,changed_by,previous_permissions,new_permissions,permissions_version,changed_at')
+            .select('id,user_id,changed_by,previous_permissions,new_permissions,permissions_version,changed_at')
             .order('changed_at',{ascending:false});
           if (!cancelled && historyRows) setPermissionHistory(historyRows as Row[]);
         }
@@ -559,7 +559,7 @@ export default function App() {
     if (profile?.role === 'owner') {
       const { data } = await supabase.from('user_terms_acceptances').select('user_id,terms_version,accepted_at,permissions_version').order('accepted_at',{ascending:false});
       if (data) setUserAcceptances(data as Row[]);
-      const {data:historyRows}=await supabase.from('user_permission_history').select('user_id,changed_by,previous_permissions,new_permissions,permissions_version,changed_at').order('changed_at',{ascending:false});
+      const {data:historyRows}=await supabase.from('user_permission_history').select('id,user_id,changed_by,previous_permissions,new_permissions,permissions_version,changed_at').order('changed_at',{ascending:false});
       if (historyRows) setPermissionHistory(historyRows as Row[]);
     }
     void syncPending().then(() => refresh());
@@ -978,7 +978,7 @@ export default function App() {
   if (supabaseConfigured && !session) return <Login onSignIn={signIn} onForgotPassword={requestPasswordRecovery} busy={busy} toast={toast} />
   if (supabaseConfigured && session && termsStatus==='error') return <AccountHold message={termsError || 'No se pudo verificar el estado de tu cuenta.'} onSignOut={signOut}/>
   if (supabaseConfigured && session && profile?.active===false) return <AccountDisabled onSignOut={signOut}/>
-  if (supabaseConfigured && session && termsStatus==='required' && termsRecord) return <TermsAcceptance terms={termsRecord} profile={profile || {}} onAccept={acceptTerms} busy={termsBusy} error={termsError}/>
+  if (supabaseConfigured && session && termsStatus==='required' && termsRecord) return <TermsAcceptance terms={termsRecord} profile={profile || {id:'',role:'cashier'}} onAccept={acceptTerms} busy={termsBusy} error={termsError}/>
     const members = rows.members || []
   const recentPayments = rows.payments || []
   const activeMembers = members.filter(m => m.status === 'active' && (!m.end_date || m.end_date >= today())).length
