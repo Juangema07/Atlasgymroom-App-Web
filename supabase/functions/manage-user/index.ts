@@ -94,13 +94,32 @@ Deno.serve(async (req: Request) => {
 
   const { data: caller, error: callerError } = await adminClient
     .from("profiles")
-    .select("role, active")
+    .select("role, active, permissions_version")
     .eq("id", authData.user.id)
     .maybeSingle();
 
   if (callerError) return reply(500, { error: "No se pudo validar el nivel de acceso" });
   if (!caller || caller.active !== true || caller.role !== "owner") {
     return reply(403, { error: "Solo un administrador activo puede crear usuarios" });
+  }
+
+  const { data: activeTerms, error: termsError } = await adminClient
+    .from("app_terms_versions")
+    .select("version")
+    .eq("active", true)
+    .maybeSingle();
+  if (termsError || !activeTerms) {
+    return reply(500, { error: "No se pudo verificar la versión vigente de los términos" });
+  }
+  const { data: termsAcceptance, error: acceptanceError } = await adminClient
+    .from("user_terms_acceptances")
+    .select("id")
+    .eq("user_id", authData.user.id)
+    .eq("terms_version", activeTerms.version)
+    .eq("permissions_version", Number(caller.permissions_version || 1))
+    .maybeSingle();
+  if (acceptanceError || !termsAcceptance) {
+    return reply(403, { error: "Debes aceptar los términos y permisos vigentes antes de administrar usuarios" });
   }
 
   let body: { full_name?: string; email?: string; role?: string; permissions?: unknown };
