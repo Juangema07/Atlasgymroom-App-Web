@@ -321,7 +321,7 @@ const permissionGroups = [
   { title:'Administración', modules:[
     {key:'employees',label:'Empleados y equipo',actions:['view','create','update']},{key:'branch',label:'Mi sucursal',actions:['view','update']},
     {key:'navigation',label:'Menú de navegación',actions:['view','update']},{key:'roles',label:'Roles',actions:['view','update']},
-    {key:'users',label:'Usuarios',actions:['view','create','update']},{key:'audit',label:'Auditoría',actions:['view']},
+    {key:'audit',label:'Auditoría',actions:['view']},
   ] },
   { title:'Comunicaciones', modules:[
     {key:'email_settings',label:'Configuración de correos',actions:['view']},{key:'email_templates',label:'Plantillas de correos',actions:['view','create','update']},
