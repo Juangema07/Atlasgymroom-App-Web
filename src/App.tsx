@@ -15,6 +15,23 @@ import {
 } from './lib/data'
 import { makeId, nowIso, type EntityTable, type Row } from './lib/localdb'
 
+const TERMS_VERSION = '2026-11-15'
+const TERMS_TEXT = [
+  'Atlasgymrun es una herramienta interna para administrar la operación del gimnasio. El acceso es individual y no se deben compartir usuarios, contraseñas ni enlaces de invitación.',
+  'La persona usuaria solo puede consultar y gestionar la información y las funciones habilitadas para el rol que le asigne el administrador. No debe intentar acceder a módulos, cuentas, datos o funciones fuera de esos permisos.',
+  'La información de socios, pagos, asistencia, ventas, inventario y demás registros debe utilizarse únicamente para las tareas autorizadas del gimnasio. Está prohibido copiarla, divulgarla o utilizarla para fines personales o ajenos a la operación.',
+  'Cada operación debe registrarse de forma veraz. Los pagos y movimientos financieros no deben alterarse para ocultar diferencias; los errores deben informarse al administrador y corregirse mediante los procedimientos disponibles.',
+  'La persona usuaria debe proteger su dispositivo y cerrar sesión cuando termine de utilizar un equipo compartido. Debe informar de inmediato sobre accesos sospechosos, pérdida del dispositivo o exposición de información.',
+  'El administrador puede modificar, limitar o retirar permisos de acceso. Los cambios de rol y las aceptaciones de estos términos quedan registrados en el sistema.',
+  'Atlasgymrun puede requerir conexión a Internet para iniciar sesión y sincronizar datos. Las operaciones pendientes de sincronización deben conservarse hasta confirmar que fueron enviadas correctamente.',
+  'La aceptación acredita que la persona recibió y comprendió estas reglas de uso y el alcance de su acceso. No constituye contrato laboral, contrato de prestación de servicios ni reemplaza los avisos y políticas de tratamiento de datos que el gimnasio deba proporcionar por separado.',
+].join('\\n\\n')
+function permissionsForRole(role: unknown) {
+  return role === 'owner'
+    ? { role: 'owner', label: 'Administrador', allowed: ['Acceso a los módulos de operación y administración visibles en Atlasgymrun', 'Gestión de usuarios e invitaciones', 'Configuración y respaldos', 'Consulta de auditoría y gestión administrativa'] }
+    : { role: 'cashier', label: 'Trabajador', allowed: ['Clientes y asistencia', 'Tarifas, pagos y cuentas por cobrar', 'Ventas, productos e inventario operativo', 'Compras, gastos y caja', 'Informes y registros auxiliares habilitados'], restricted: ['No puede administrar usuarios', 'No puede modificar la configuración reservada al propietario ni consultar la auditoría administrativa'] }
+}
+
 type Section = 'Inicio' | 'Miembros' | 'Planes' | 'Asistencia' | 'Pase diario' | 'Pagos' | 'Ventas' | 'Productos' | 'Compras' | 'Gastos' | 'Caja' | 'Informes' | 'Equipo' | 'Auditoría' | 'Configuración' | 'Tarifas' | 'Cuentas por Cobrar Pagos' | 'Congelar Pagos' | 'Notas Débito' | 'Notas Crédito' | 'Cuentas por Cobrar Ventas' | 'Lista de Precios' | 'Evoluciones' | 'Rutinas' | 'Ejercicios' | 'Proveedores' | 'Empleados' | 'Cuentas por Pagar Compras' | 'Documento Soporte' | 'Notas Ajuste' | 'Tipos de Gastos' | 'Ajuste Cartera' | 'Categorías de Producto' | 'Ajustes de Inventario' | 'Regularizaciones de Inventario' | 'Kardex de Inventario' | 'Configuración de Reservaciones' | 'Clases' | 'Reservaciones' | 'Mi Sucursal' | 'Menú de Navegación' | 'Roles' | 'Usuarios' | 'Configuración de Correos' | 'Plantilla de Correos' | 'Notificaciones' | 'Historial de Correos'
 type Field = { key: string; label: string; type?: string; required?: boolean; disabled?: boolean; placeholder?: string; options?: { value: string; label: string }[] }
 type ModuleConfig = { table: EntityTable; title: string; description: string; fields: Field[]; columns: { key: string; label: string }[] }
@@ -158,10 +175,49 @@ function configFor(section: Section, rows: Record<string, Row[]>): ModuleConfig 
   }
   const normalized: Section = section === 'Tarifas' || section === 'Lista de Precios' ? 'Planes' : section === 'Cuentas por Cobrar Pagos' ? 'Pagos' : section === 'Congelar Pagos' ? 'Miembros' : section
   const config = base[normalized] as ModuleConfig | undefined
-  if (!config) return null
-  if (section === 'Cuentas por Cobrar Pagos') return { ...config, title: 'Cuentas por cobrar pagos', description: 'Abonos pendientes y saldos que faltan por recibir.' }
-  if (section === 'Congelar Pagos') return { ...config, title: 'Congelar pagos', description: 'Clientes con actividad pausada y acciones para reactivar su tarifa.' }
-  return config
+  if (config) {
+    if (section === 'Cuentas por Cobrar Pagos') return { ...config, title: 'Cuentas por cobrar pagos', description: 'Abonos pendientes y saldos que faltan por recibir.' }
+    if (section === 'Congelar Pagos') return { ...config, title: 'Congelar pagos', description: 'Clientes con actividad pausada y acciones para reactivar su tarifa.' }
+    return config
+  }
+
+  // Los módulos auxiliares tienen CRUD real sobre gym_records. No se presentan
+  // como documentos fiscales ni como motores contables especializados.
+  const auxiliaryModules: Section[] = [
+    'Notas Débito','Notas Crédito','Cuentas por Cobrar Ventas','Evoluciones','Rutinas','Ejercicios',
+    'Proveedores','Empleados','Cuentas por Pagar Compras','Documento Soporte','Notas Ajuste',
+    'Tipos de Gastos','Ajuste Cartera','Categorías de Producto','Ajustes de Inventario',
+    'Regularizaciones de Inventario','Kardex de Inventario','Configuración de Reservaciones',
+    'Clases','Reservaciones','Mi Sucursal',
+  ]
+  if (!auxiliaryModules.includes(section)) return null
+  const labels: Partial<Record<Section,string>> = {
+    'Notas Débito':'Concepto de la nota débito','Notas Crédito':'Concepto de la nota crédito',
+    'Cuentas por Cobrar Ventas':'Referencia de la cuenta por cobrar','Evoluciones':'Resumen de evolución',
+    'Rutinas':'Nombre de la rutina','Ejercicios':'Nombre del ejercicio','Proveedores':'Nombre del proveedor',
+    'Empleados':'Nombre de la persona','Cuentas por Pagar Compras':'Referencia de la cuenta por pagar',
+    'Documento Soporte':'Referencia del documento soporte','Notas Ajuste':'Concepto del ajuste',
+    'Tipos de Gastos':'Nombre del tipo de gasto','Ajuste Cartera':'Concepto del ajuste de cartera',
+    'Categorías de Producto':'Nombre de la categoría','Ajustes de Inventario':'Motivo del ajuste',
+    'Regularizaciones de Inventario':'Motivo de regularización','Kardex de Inventario':'Referencia del movimiento',
+    'Configuración de Reservaciones':'Nombre de la configuración','Clases':'Nombre de la clase',
+    'Reservaciones':'Nombre o referencia de la reservación','Mi Sucursal':'Nombre o dato de la sucursal',
+  }
+  return {
+    table: 'gym_records', title: section,
+    description: 'Registro auxiliar con búsqueda y edición. No genera documentos electrónicos DIAN ni reemplaza operaciones contables o transaccionales especializadas.',
+    fields: [
+      { key: 'title', label: labels[section] || 'Nombre o concepto', required: true },
+      { key: 'person_name', label: 'Persona / entidad relacionada' },
+      { key: 'phone', label: 'Teléfono' }, { key: 'email', label: 'Correo', type: 'email' },
+      { key: 'record_date', label: 'Fecha del registro', type: 'date' },
+      { key: 'date_start', label: 'Fecha inicial', type: 'date' },
+      { key: 'date_end', label: 'Fecha final', type: 'date' },
+      { key: 'amount', label: 'Valor de referencia (COP)', type: 'number' },
+      { key: 'status', label: 'Estado' }, { key: 'notes', label: 'Detalles / observaciones', type: 'textarea' },
+    ],
+    columns: [{ key: 'title', label: 'Concepto' }, { key: 'person_name', label: 'Relacionado' }, { key: 'record_date', label: 'Fecha' }, { key: 'status', label: 'Estado' }, { key: 'amount', label: 'Valor' }],
+  }
 }
 
 export default function App() {
@@ -171,6 +227,9 @@ export default function App() {
   const [authLoading, setAuthLoading] = useState(Boolean(supabaseConfigured))
   const [recoveryMode, setRecoveryMode] = useState(false)
   const [profile, setProfile] = useState<Row | null>(null)
+  const [consentLoading, setConsentLoading] = useState(Boolean(supabaseConfigured))
+  const [consentAccepted, setConsentAccepted] = useState(false)
+  const [consentError, setConsentError] = useState('')
   const [rows, setRows] = useState<Record<string, Row[]>>({})
   const [search, setSearch] = useState('')
   const [attendanceLookup, setAttendanceLookup] = useState('')
@@ -234,6 +293,21 @@ export default function App() {
   }, [session, refresh])
 
   useEffect(() => {
+    if (!supabase || !session?.user) { setConsentLoading(false); setConsentAccepted(false); return }
+    let current = true
+    setConsentLoading(true); setConsentError('')
+    supabase.from('user_consents').select('id,terms_version').eq('user_id', session.user.id)
+      .order('accepted_at', { ascending: false }).limit(1).maybeSingle()
+      .then(({ data, error }) => {
+        if (!current) return
+        if (error) { setConsentError('No se pudo comprobar la aceptación. Verifica que la migración de términos esté instalada.'); setConsentAccepted(false) }
+        else setConsentAccepted(data?.terms_version === TERMS_VERSION)
+        setConsentLoading(false)
+      })
+    return () => { current = false }
+  }, [session])
+
+  useEffect(() => {
     const onOnline = () => { void sync() }
     window.addEventListener('online', onOnline)
     return () => window.removeEventListener('online', onOnline)
@@ -288,6 +362,27 @@ export default function App() {
     setRows({})
     setProfile(null)
     setSection('Inicio')
+  }
+
+  async function acceptCurrentTerms() {
+    if (!supabase || !session?.user) return
+    setBusy(true); setConsentError('')
+    try {
+      const { data: currentProfile, error: profileError } = await supabase.from('profiles').select('role').eq('id', session.user.id).maybeSingle()
+      if (profileError) throw profileError
+      const role = currentProfile?.role || profile?.role || 'cashier'
+      const { error } = await supabase.from('user_consents').insert({
+        user_id: session.user.id,
+        terms_version: TERMS_VERSION,
+        terms_text: TERMS_TEXT,
+        permissions_snapshot: permissionsForRole(role),
+      })
+      if (error) throw error
+      setConsentAccepted(true)
+      notify('Aceptación registrada correctamente.')
+    } catch (error) {
+      setConsentError(error instanceof Error ? error.message : 'No se pudo registrar la aceptación.')
+    } finally { setBusy(false) }
   }
 
   async function createStaffUser(payload: { full_name: string; email: string; role: 'owner' | 'cashier' }) {
@@ -616,6 +711,8 @@ export default function App() {
   if (authLoading) return <div className="auth-screen"><div className="auth-card"><div className="brand-mark"><Dumbbell/></div><p>Comprobando acceso seguro…</p></div></div>
   if (supabaseConfigured && recoveryMode && session) return <PasswordRecovery onSave={saveNewPassword} busy={busy} toast={toast} />
   if (supabaseConfigured && !session) return <Login onSignIn={signIn} onForgotPassword={requestPasswordRecovery} busy={busy} toast={toast} />
+  if (supabaseConfigured && session && consentLoading) return <div className="auth-screen"><div className="auth-card"><div className="brand-mark"><Dumbbell/></div><p>Comprobando aceptación de términos…</p></div></div>
+  if (supabaseConfigured && session && !consentAccepted) return <TermsAcceptance role={profile?.role || 'cashier'} busy={busy} error={consentError} onAccept={acceptCurrentTerms} />
     const members = rows.members || []
   const recentPayments = rows.payments || []
   const activeMembers = members.filter(m => m.status === 'active' && (!m.end_date || m.end_date >= today())).length
@@ -745,6 +842,21 @@ export default function App() {
     <input ref={fileRef} type="file" accept="application/json" hidden onChange={e => void restore(e.target.files?.[0])}/>
     {toast && <div className="toast"><Check size={16}/>{toast}<button onClick={() => setToast('')}><X size={14}/></button></div>}
   </div>
+}
+
+function TermsAcceptance({ role, busy, error, onAccept }: { role: unknown; busy: boolean; error: string; onAccept: () => void }) {
+  const [checked, setChecked] = useState(false)
+  const permissions = permissionsForRole(role)
+  return <div className="auth-screen"><section className="auth-card terms-card">
+    <div className="brand-mark"><Shield size={23}/></div><div className="eyebrow">ATLASGYMRUN · ACCESO SEGURO</div>
+    <h1>Antes de continuar</h1><p>Lee las condiciones de uso y revisa qué puede hacer tu cuenta.</p>
+    <div className="terms-role"><strong>Tu nivel de acceso: {permissions.label}</strong><ul>{permissions.allowed.map(item=><li key={item}>{item}</li>)}</ul>{'restricted' in permissions && <><strong>Acciones restringidas</strong><ul>{permissions.restricted.map(item=><li key={item}>{item}</li>)}</ul></>}</div>
+    <div className="terms-copy">{TERMS_TEXT.split('\\n\\n').map((paragraph,index)=><p key={index}>{paragraph}</p>)}</div>
+    <label className="terms-check"><input type="checkbox" checked={checked} onChange={event=>setChecked(event.target.checked)}/><span>Confirmo que leí y acepto los términos y las condiciones de uso, y que conozco los permisos asignados a mi cuenta.</span></label>
+    {error && <p className="auth-error">{error}</p>}
+    <button className="primary-button" disabled={!checked || busy} onClick={onAccept}>{busy?'Registrando aceptación…':'Aceptar y continuar'}</button>
+    <small className="terms-version">Versión {TERMS_VERSION} · La aceptación queda registrada con fecha y usuario.</small>
+  </section></div>
 }
 
 function Login({ onSignIn, onForgotPassword, busy, toast }: { onSignIn: (email: string, password: string) => void; onForgotPassword: (email: string) => void; busy: boolean; toast: string }) {
