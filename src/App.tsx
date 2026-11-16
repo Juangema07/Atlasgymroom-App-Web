@@ -25,7 +25,7 @@ const TERMS_TEXT = [
   'El administrador puede modificar, limitar o retirar permisos de acceso. Los cambios de rol y las aceptaciones de estos términos quedan registrados en el sistema.',
   'Atlasgymrun puede requerir conexión a Internet para iniciar sesión y sincronizar datos. Las operaciones pendientes de sincronización deben conservarse hasta confirmar que fueron enviadas correctamente.',
   'La aceptación acredita que la persona recibió y comprendió estas reglas de uso y el alcance de su acceso. No constituye contrato laboral, contrato de prestación de servicios ni reemplaza los avisos y políticas de tratamiento de datos que el gimnasio deba proporcionar por separado.',
-].join('\\n\\n')
+].join('\n\n')
 function permissionsForRole(role: unknown) {
   return role === 'owner'
     ? { role: 'owner', label: 'Administrador', allowed: ['Acceso a los módulos de operación y administración visibles en Atlasgymrun', 'Gestión de usuarios e invitaciones', 'Configuración y respaldos', 'Consulta de auditoría y gestión administrativa'] }
@@ -296,14 +296,17 @@ export default function App() {
     if (!supabase || !session?.user) { setConsentLoading(false); setConsentAccepted(false); return }
     let current = true
     setConsentLoading(true); setConsentError('')
-    supabase.from('user_consents').select('id,terms_version').eq('user_id', session.user.id)
-      .order('accepted_at', { ascending: false }).limit(1).maybeSingle()
-      .then(({ data, error }) => {
-        if (!current) return
-        if (error) { setConsentError('No se pudo comprobar la aceptación. Verifica que la migración de términos esté instalada.'); setConsentAccepted(false) }
-        else setConsentAccepted(data?.terms_version === TERMS_VERSION)
-        setConsentLoading(false)
-      })
+    Promise.all([
+      supabase.from('profiles').select('*').eq('id', session.user.id).maybeSingle(),
+      supabase.from('user_consents').select('id,terms_version').eq('user_id', session.user.id)
+        .order('accepted_at', { ascending: false }).limit(1).maybeSingle(),
+    ]).then(([profileResult, consentResult]) => {
+      if (!current) return
+      if (profileResult.data) setProfile(profileResult.data)
+      if (consentResult.error) { setConsentError('No se pudo comprobar la aceptación. Verifica que la migración de términos esté instalada.'); setConsentAccepted(false) }
+      else setConsentAccepted(consentResult.data?.terms_version === TERMS_VERSION)
+      setConsentLoading(false)
+    })
     return () => { current = false }
   }, [session])
 
@@ -851,7 +854,7 @@ function TermsAcceptance({ role, busy, error, onAccept }: { role: unknown; busy:
     <div className="brand-mark"><Shield size={23}/></div><div className="eyebrow">ATLASGYMRUN · ACCESO SEGURO</div>
     <h1>Antes de continuar</h1><p>Lee las condiciones de uso y revisa qué puede hacer tu cuenta.</p>
     <div className="terms-role"><strong>Tu nivel de acceso: {permissions.label}</strong><ul>{permissions.allowed.map(item=><li key={item}>{item}</li>)}</ul>{'restricted' in permissions && <><strong>Acciones restringidas</strong><ul>{permissions.restricted.map(item=><li key={item}>{item}</li>)}</ul></>}</div>
-    <div className="terms-copy">{TERMS_TEXT.split('\\n\\n').map((paragraph,index)=><p key={index}>{paragraph}</p>)}</div>
+    <div className="terms-copy">{TERMS_TEXT.split('\n\n').map((paragraph,index)=><p key={index}>{paragraph}</p>)}</div>
     <label className="terms-check"><input type="checkbox" checked={checked} onChange={event=>setChecked(event.target.checked)}/><span>Confirmo que leí y acepto los términos y las condiciones de uso, y que conozco los permisos asignados a mi cuenta.</span></label>
     {error && <p className="auth-error">{error}</p>}
     <button className="primary-button" disabled={!checked || busy} onClick={onAccept}>{busy?'Registrando aceptación…':'Aceptar y continuar'}</button>
