@@ -348,6 +348,7 @@ export default function App() {
   const [termsError, setTermsError] = useState('');
   const [termsBusy, setTermsBusy] = useState(false);
   const [userAcceptances, setUserAcceptances] = useState<Row[]>([]);
+  const [permissionHistory, setPermissionHistory] = useState<Row[]>([]);
 
   const [rows, setRows] = useState<Record<string, Row[]>>({})
   const [search, setSearch] = useState('')
@@ -442,6 +443,11 @@ export default function App() {
             .from('user_terms_acceptances').select('user_id,terms_version,accepted_at')
             .order('accepted_at', { ascending:false });
           if (!cancelled && allAcceptances) setUserAcceptances(allAcceptances as Row[]);
+          const { data: historyRows } = await supabase
+            .from('user_permission_history')
+            .select('user_id,changed_by,previous_permissions,new_permissions,permissions_version,changed_at')
+            .order('changed_at',{ascending:false});
+          if (!cancelled && historyRows) setPermissionHistory(historyRows as Row[]);
         }
         if (acceptance) void syncPending().then(() => refresh());
       } else if (!supabaseConfigured) {
@@ -462,6 +468,7 @@ export default function App() {
         setTermsRecord(null);
         setTermsStatus('loading');
         setUserAcceptances([]);
+        setPermissionHistory([]);
       }
     };
     void loadAccount();
@@ -551,6 +558,8 @@ export default function App() {
     if (profile?.role === 'owner') {
       const { data } = await supabase.from('user_terms_acceptances').select('user_id,terms_version,accepted_at').order('accepted_at',{ascending:false});
       if (data) setUserAcceptances(data as Row[]);
+      const {data:historyRows}=await supabase.from('user_permission_history').select('user_id,changed_by,previous_permissions,new_permissions,permissions_version,changed_at').order('changed_at',{ascending:false});
+      if (historyRows) setPermissionHistory(historyRows as Row[]);
     }
     void syncPending().then(() => refresh());
   }
@@ -1015,7 +1024,7 @@ export default function App() {
         {section === 'Configuración' && (isOwner ? <SettingsPage onBackup={backup} onRestore={() => fileRef.current?.click()} onResetDemo={resetDemoData} onSeed={seedDemoData} busy={busy} /> : <AccessDenied />)}
         {section === 'Productos' && (moduleConfig ? <ProductCatalog products={filteredRows} onCreate={openCreate} onEdit={openRecord} canCreate={canModule('Productos','create')} canUpdate={canModule('Productos','update')}/> : <AccessDenied />)}
         {moduleConfig && section !== 'Productos' && <DataModule config={moduleConfig} rows={filteredRows} canCreate={canModule(section,'create')} canUpdate={canModule(section,'update')} canCharge={canModule('Pagos','create')} search={search} setSearch={setSearch} onCreate={openCreate} onEdit={openRecord} onTogglePause={toggleMemberPause} onMemberPayment={openMemberPayment} onCollectBalance={record => { const total=Number(record.total??record.total_amount??record.amount??0); setEditing(record); setForm({ amount_paid: String(Math.max(0,total-Number(record.amount_paid||0))), method: 'cash' }); setDialog('balance') }} memberName={memberName} productName={productName} planName={planName} />}
-        {section === 'Usuarios' && (isOwner ? <UsersPage users={rows.profiles || []} onCreate={createStaffUser} onUpdatePermissions={updateStaffPermissions} onToggleActive={toggleStaffActive} acceptances={userAcceptances} activeTermsVersion={String(termsRecord?.version||'')} busy={busy} /> : <AccessDenied />)}
+        {section === 'Usuarios' && (isOwner ? <UsersPage users={rows.profiles || []} onCreate={createStaffUser} onUpdatePermissions={updateStaffPermissions} onToggleActive={toggleStaffActive} acceptances={userAcceptances} permissionHistory={permissionHistory} activeTermsVersion={String(termsRecord?.version||'')} busy={busy} /> : <AccessDenied />)}
         {!moduleConfig && !['Inicio','Caja','Informes','Configuración','Usuarios'].includes(section) && (canModule(section,'view') ? <PlaceholderModule title={section} /> : <AccessDenied />)}
         {section === 'Equipo' && !isOwner && <AccessDenied/>}
         <footer>© 2026 Atlasgymrun <span>Gestión clara para entrenar mejor.</span></footer>
@@ -1366,13 +1375,14 @@ function PermissionMatrix({value,onChange}:{value:Record<string,Record<string,bo
   </div>;
 }
 
-function UsersPage({ users,onCreate,busy,onUpdatePermissions,onToggleActive,acceptances,activeTermsVersion }: {
+function UsersPage({ users,onCreate,busy,onUpdatePermissions,onToggleActive,acceptances,permissionHistory,activeTermsVersion }: {
   users:Row[];
   onCreate:(payload:{full_name:string;email:string;role:'owner'|'cashier';permissions:Record<string,Record<string,boolean>>})=>Promise<void>;
   busy:boolean;
   onUpdatePermissions:(id:string,permissions:Record<string,Record<string,boolean>>,permissionsVersion:number)=>Promise<void>;
   onToggleActive:(user:Row)=>Promise<void>;
   acceptances:Row[];
+  permissionHistory:Row[];
   activeTermsVersion:string;
 }) {
   const [fullName,setFullName]=useState('');
@@ -1380,6 +1390,7 @@ function UsersPage({ users,onCreate,busy,onUpdatePermissions,onToggleActive,acce
   const [role,setRole]=useState<'owner'|'cashier'>('cashier');
   const [permissions,setPermissions]=useState<Record<string,Record<string,boolean>>>(()=>JSON.parse(JSON.stringify(defaultCashierPermissions)));
   const [selectedUser,setSelectedUser]=useState<Row|null>(null);
+  const [historyUser,setHistoryUser]=useState<Row|null>(null);
   const [editPermissions,setEditPermissions]=useState<Record<string,Record<string,boolean>>>({});
   const [feedback,setFeedback]=useState('');
   const [error,setError]=useState(false);
@@ -1438,12 +1449,22 @@ function UsersPage({ users,onCreate,busy,onUpdatePermissions,onToggleActive,acce
             <span className={user.active===false?'users-state inactive':'users-state'}>{user.active===false?'Desactivado':'Activo'}</span>
             {user.role!=='owner'&&<div className="users-row-actions">
               <button type="button" className="secondary-button" onClick={()=>{setSelectedUser(user);setEditPermissions(JSON.parse(JSON.stringify(user.permissions||{})));}}>Permisos</button>
+              <button type="button" className="secondary-button" onClick={()=>setHistoryUser(user)}>Historial</button>
               <button type="button" className="secondary-button" onClick={()=>void changeActive(user)}>{user.active===false?'Reactivar':'Desactivar'}</button>
             </div>}
           </div>;
         })}</div>:<Empty text="Todavía no hay usuarios registrados."/>}
       </section>
     </div>
+    {historyUser&&<section className="panel permission-edit-panel">
+      <div className="panel-heading"><div><h2>Historial de permisos · {historyUser.full_name}</h2><p>Registro de versiones anteriores y nuevas de los permisos asignados.</p></div><button type="button" className="secondary-button" onClick={()=>setHistoryUser(null)}>Cerrar</button></div>
+      {permissionHistory.filter(item=>item.user_id===historyUser.id).length ? <div className="table-wrap"><table><thead><tr><th>Fecha</th><th>Versión</th><th>Permisos antes</th><th>Permisos después</th></tr></thead><tbody>
+        {permissionHistory.filter(item=>item.user_id===historyUser.id).map((item,index)=>{
+          const count=(value:unknown)=>Object.values((value||{}) as Record<string,Record<string,boolean>>).reduce((sum,actions)=>sum+Object.values(actions||{}).filter(Boolean).length,0);
+          return <tr key={String(item.permissions_version||index)}><td>{formatDate(item.changed_at)}</td><td>{item.permissions_version}</td><td>{count(item.previous_permissions)} acción(es)</td><td>{count(item.new_permissions)} acción(es)</td></tr>;
+        })}
+      </tbody></table></div> : <Empty text="Aún no hay cambios de permisos registrados para esta cuenta."/>}
+    </section>}
     {selectedUser&&<section className="panel permission-edit-panel">
       <div className="panel-heading"><div><h2>Permisos de {selectedUser.full_name}</h2><p>Los cambios se guardan en el perfil y se aplican a las próximas consultas y operaciones.</p></div><button type="button" className="secondary-button" onClick={()=>setSelectedUser(null)}>Cerrar</button></div>
       <PermissionMatrix value={editPermissions} onChange={setEditPermissions}/>
