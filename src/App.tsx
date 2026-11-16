@@ -492,7 +492,8 @@ export default function App() {
     if (profile?.active === false) return false;
     if (['Usuarios','Equipo','Configuración'].includes(target)) return profile?.role === 'owner';
     if (profile?.role === 'owner') return true;
-    return profile?.permissions?.[permissionKeyFor(target)]?.[action] === true;
+    const modulePermissions=profile?.permissions?.[permissionKeyFor(target)];
+    return modulePermissions?.view === true && modulePermissions?.[action] === true;
   };
   const moduleConfig = canModule(section, 'view') ? configFor(section, rows) : null
   const moduleRows = moduleConfig ? (rows[moduleConfig.table] || []) : []
@@ -588,6 +589,8 @@ export default function App() {
     setBusy(false);
     if (error) throw new Error(error.message || 'No se pudieron guardar los permisos.');
     await refresh();
+    const {data:historyRows}=await supabase.from('user_permission_history').select('user_id,changed_by,previous_permissions,new_permissions,permissions_version,changed_at').order('changed_at',{ascending:false});
+    if (historyRows) setPermissionHistory(historyRows as Row[]);
     notify('Permisos actualizados. La persona deberá revisar y aceptar nuevamente los términos y permisos al volver a entrar.');
   }
 
@@ -1333,7 +1336,7 @@ function AccountDisabled({onSignOut}:{onSignOut:()=>void}) {
 function TermsAcceptance({terms,profile,onAccept,busy,error}:{terms:Row;profile:Row;onAccept:()=>void;busy:boolean;error:string}) {
  const [checked,setChecked]=useState(false);
  const role=profile.role==='owner'?'Administrador':'Trabajador';
- const allowed=permissionGroups.map(group=>({...group,modules:group.modules.filter(module=>module.actions.some(action=>profile.role==='owner'||profile.permissions?.[module.key]?.[action]===true))})).filter(group=>group.modules.length);
+ const allowed=permissionGroups.map(group=>({...group,modules:group.modules.filter(module=>module.actions.some(action=>profile.role==='owner'||(profile.permissions?.[module.key]?.view===true&&profile.permissions?.[module.key]?.[action]===true)))})).filter(group=>group.modules.length);
  return <div className="terms-screen"><section className="terms-card">
    <div className="brand"><div className="brand-mark"><Dumbbell size={21}/></div><div><strong>ATLAS<span>GYMRUN</span></strong><small>GESTIÓN DE GIMNASIO</small></div></div>
    <div className="eyebrow">PRIMER ACCESO · ACEPTACIÓN DIGITAL</div><h1>{terms.title||'Términos y condiciones de uso'}</h1>
@@ -1341,7 +1344,7 @@ function TermsAcceptance({terms,profile,onAccept,busy,error}:{terms:Row;profile:
    <div className="terms-version">Versión {terms.version} · Perfil: {role}</div>
    <div className="terms-body">{String(terms.body||'').split('\n').map((line,index)=><p key={index}>{line||' '}</p>)}</div>
    <section className="terms-permissions"><h2>Permisos de esta cuenta</h2>
-     {profile.role==='owner'?<p>Tu cuenta de administrador tiene acceso completo a todos los apartados y acciones.</p>:allowed.length?allowed.map(group=><div key={group.title}><strong>{group.title}</strong><ul>{group.modules.map(module=><li key={module.key}>{module.label}: {module.actions.filter(action=>profile.permissions?.[module.key]?.[action]===true).map(action=>actionLabels[action]).join(', ')}</li>)}</ul></div>):<p>Tu cuenta no tiene módulos habilitados. El administrador debe asignar permisos antes de que puedas trabajar.</p>}
+     {profile.role==='owner'?<p>Tu cuenta de administrador tiene acceso completo a todos los apartados y acciones.</p>:allowed.length?allowed.map(group=><div key={group.title}><strong>{group.title}</strong><ul>{group.modules.map(module=><li key={module.key}>{module.label}: {module.actions.filter(action=>profile.permissions?.[module.key]?.view===true&&profile.permissions?.[module.key]?.[action]===true).map(action=>actionLabels[action]).join(', ')}</li>)}</ul></div>):<p>Tu cuenta no tiene módulos habilitados. El administrador debe asignar permisos antes de que puedas trabajar.</p>}
    </section>
    <label className="terms-check"><input type="checkbox" checked={checked} onChange={event=>setChecked(event.target.checked)}/><span>He leído y acepto estos términos y el alcance de los permisos mostrados para mi cuenta.</span></label>
    {error&&<div className="auth-error">{error}</div>}
