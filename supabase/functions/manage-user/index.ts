@@ -72,7 +72,7 @@ Deno.serve(async (req: Request) => {
   if (req.method !== "POST") return reply(405, { error: "Método no permitido" });
 
   const authorization = req.headers.get("Authorization") || "";
-  const token = authorization.replace(/^Bearer\\s+/i, "");
+  const token = authorization.replace(/^Bearer\s+/i, "");
   if (!token) return reply(401, { error: "Debes iniciar sesión" });
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
@@ -117,7 +117,7 @@ Deno.serve(async (req: Request) => {
   if (fullName.length < 2 || fullName.length > 100) {
     return reply(400, { error: "Escribe un nombre entre 2 y 100 caracteres" });
   }
-  if (email.length > 254 || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)) {
+  if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     return reply(400, { error: "Escribe un correo electrónico válido" });
   }
   if (role !== "owner" && role !== "cashier") {
