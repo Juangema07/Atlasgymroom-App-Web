@@ -1104,7 +1104,8 @@ function UsersPage({ users, onCreate, busy }: { users:Row[]; onCreate:(payload:{
       setAcceptances(latest)
     })
     return () => { current = false }
-  }, [users])\n  async function submit(event:FormEvent) {
+  }, [users])
+  async function submit(event:FormEvent) {
     event.preventDefault()
     setFeedback('');setError(false)
     try {
