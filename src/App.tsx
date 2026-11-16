@@ -146,7 +146,7 @@ function configFor(section: Section, rows: Record<string, Row[]>): ModuleConfig 
     'Pase diario': { table: 'day_passes', title: 'Pases diarios', description: 'Entradas de visitantes sin crear una membresía.', fields: [], columns: [{ key: 'visitor_name', label: 'Visitante' }, { key: 'amount', label: 'Tarifa' }, { key: 'method', label: 'Método' }, { key: 'visited_at', label: 'Fecha' }] },
     Pagos: { table: 'payments', title: 'Pagos y mensualidades', description: 'Historial de cobros, abonos y saldos pendientes.', fields: [], columns: [{ key: 'member_id', label: 'Socio' }, { key: 'amount', label: 'Valor' }, { key: 'amount_paid', label: 'Recibido' }, { key: 'status', label: 'Estado' }, { key: 'paid_at', label: 'Fecha' }] },
     Productos: { table: 'products', title: 'Productos e inventario', description: 'Catálogo, precios, costos y existencias.', fields: [
-      { key: 'name', label: 'Nombre del producto', required: true }, { key: 'category', label: 'Categoría', placeholder: 'Bebidas, suplementos, accesorios…' }, { key: 'sku', label: 'Código / SKU' }, { key: 'description', label: 'Descripción' },
+      { key: 'name', label: 'Nombre del producto', required: true }, { key: 'category', label: 'Categoría', type: 'select', options: [{value:'Otros',label:'Otros'}, ...(rows.gym_records || []).filter(record => record.module_key === 'product_categories' && record.status !== 'inactive').map(record => ({value:String(record.title),label:String(record.title)}))] }, { key: 'sku', label: 'Código / SKU' }, { key: 'description', label: 'Descripción' },
       { key: 'cost', label: 'Costo (COP)', type: 'number' }, { key: 'price', label: 'Precio (COP)', type: 'number', required: true },
       { key: 'stock', label: 'Existencias iniciales', type: 'number', required: true }, { key: 'min_stock', label: 'Stock mínimo', type: 'number' },
     ], columns: [{ key: 'name', label: 'Producto' }, { key: 'category', label: 'Categoría' }, { key: 'stock', label: 'Existencias' }, { key: 'min_stock', label: 'Mínimo' }, { key: 'price', label: 'Precio' }] },
@@ -156,13 +156,184 @@ function configFor(section: Section, rows: Record<string, Row[]>): ModuleConfig 
     Equipo: { table: 'profiles', title: 'Equipo y usuarios', description: 'Usuarios individuales. Las cuentas se crean desde Supabase Auth.', fields: [], columns: [{ key: 'full_name', label: 'Nombre' }, { key: 'role', label: 'Rol' }, { key: 'active', label: 'Activo' }] },
     Auditoría: { table: 'audit_logs', title: 'Auditoría', description: 'Historial de modificaciones registradas en la base de datos.', fields: [], columns: [{ key: 'entity_table', label: 'Módulo' }, { key: 'action', label: 'Acción' }, { key: 'entity_id', label: 'Registro' }, { key: 'changed_at', label: 'Fecha' }] },
   }
+
+  const aux: Partial<Record<Section, ModuleConfig>> = {
+    'Evoluciones': { table:'gym_records', title:'Evoluciones', description:'Seguimiento de sesiones y avances de entrenamiento. No sustituye una historia clínica.', fields:[
+      {key:'person_name',label:'Socio',required:true},{key:'record_date',label:'Fecha',type:'date',required:true},
+      {key:'detail_session',label:'Sesión / actividad'},{key:'detail_notes',label:'Observaciones de entrenamiento',type:'textarea'},
+    ], columns:[{key:'person_name',label:'Socio'},{key:'record_date',label:'Fecha'},{key:'detail_session',label:'Actividad'},{key:'status',label:'Estado'}] },
+    'Rutinas': { table:'gym_records', title:'Rutinas', description:'Crea y administra rutinas asignadas a los socios.', fields:[
+      {key:'title',label:'Nombre de la rutina',required:true},{key:'person_name',label:'Socio asignado'},
+      {key:'date_start',label:'Fecha de inicio',type:'date'},{key:'date_end',label:'Fecha de finalización',type:'date'},
+      {key:'status',label:'Estado',type:'select',options:[{value:'active',label:'Activa'},{value:'paused',label:'Pausada'},{value:'completed',label:'Completada'}]},
+      {key:'detail_days_per_week',label:'Días por semana',type:'number'},{key:'detail_goal',label:'Objetivo'},{key:'detail_exercises',label:'Ejercicios / series / repeticiones',type:'textarea'},
+    ], columns:[{key:'title',label:'Rutina'},{key:'person_name',label:'Socio'},{key:'date_start',label:'Inicio'},{key:'date_end',label:'Fin'},{key:'status',label:'Estado'}] },
+    'Ejercicios': { table:'gym_records', title:'Ejercicios', description:'Catálogo de ejercicios e instrucciones para construir rutinas.', fields:[
+      {key:'title',label:'Nombre del ejercicio',required:true},{key:'status',label:'Estado',type:'select',options:[{value:'active',label:'Activo'},{value:'inactive',label:'Inactivo'}]},
+      {key:'detail_muscle_group',label:'Grupo muscular'},{key:'detail_equipment',label:'Equipo'},{key:'detail_instructions',label:'Instrucciones',type:'textarea'},
+    ], columns:[{key:'title',label:'Ejercicio'},{key:'detail_muscle_group',label:'Grupo'},{key:'detail_equipment',label:'Equipo'},{key:'status',label:'Estado'}] },
+    'Proveedores': { table:'gym_records', title:'Proveedores', description:'Directorio de proveedores para asociar a compras.', fields:[
+      {key:'person_name',label:'Nombre del contacto',required:true},{key:'detail_business_name',label:'Empresa'},{key:'phone',label:'Teléfono'},{key:'email',label:'Correo',type:'email'},
+      {key:'detail_tax_id',label:'NIT / identificación'},{key:'detail_address',label:'Dirección'},{key:'status',label:'Estado',type:'select',options:[{value:'active',label:'Activo'},{value:'inactive',label:'Inactivo'}]},
+      {key:'notes',label:'Notas',type:'textarea'},
+    ], columns:[{key:'person_name',label:'Contacto'},{key:'detail_business_name',label:'Empresa'},{key:'phone',label:'Teléfono'},{key:'email',label:'Correo'},{key:'status',label:'Estado'}] },
+    'Empleados': { table:'gym_records', title:'Personal', description:'Directorio operativo del equipo. Las cuentas y permisos de acceso se administran en Usuarios.', fields:[
+      {key:'person_name',label:'Nombre completo',required:true},{key:'phone',label:'Teléfono'},{key:'email',label:'Correo',type:'email'},
+      {key:'detail_position',label:'Cargo / función'},{key:'status',label:'Estado',type:'select',options:[{value:'active',label:'Activo'},{value:'inactive',label:'Inactivo'}]},{key:'notes',label:'Notas',type:'textarea'},
+    ], columns:[{key:'person_name',label:'Nombre'},{key:'detail_position',label:'Cargo'},{key:'phone',label:'Teléfono'},{key:'email',label:'Correo'},{key:'status',label:'Estado'}] },
+    'Cuentas por Cobrar Ventas': { table:'sales', title:'Cuentas por cobrar de ventas', description:'Ventas con saldos pendientes. Registra abonos sin borrar el movimiento original.', fields:[], columns:[
+      {key:'id',label:'Venta'},{key:'total',label:'Total'},{key:'amount_paid',label:'Recibido'},{key:'status',label:'Estado'},{key:'sold_at',label:'Fecha'}
+    ] },
+    'Cuentas por Pagar Compras': { table:'purchases', title:'Cuentas por pagar de compras', description:'Compras con saldo pendiente y registro de abonos.', fields:[], columns:[
+      {key:'supplier',label:'Proveedor'},{key:'description',label:'Concepto'},{key:'total_amount',label:'Total'},{key:'amount_paid',label:'Pagado'},{key:'purchased_at',label:'Fecha'}
+    ] },
+    'Notas Débito': { table:'gym_records', title:'Notas débito · registro interno', description:'Registra solicitudes de ajuste a ventas. No genera una nota electrónica ni modifica automáticamente la contabilidad.', fields:[
+      {key:'title',label:'Concepto',required:true},{key:'person_name',label:'Cliente / tercero'},{key:'record_date',label:'Fecha',type:'date'},
+      {key:'amount',label:'Valor solicitado (COP)',type:'number'},{key:'detail_reference',label:'Venta / referencia'},{key:'notes',label:'Motivo y soporte',type:'textarea'},
+    ], columns:[{key:'title',label:'Concepto'},{key:'person_name',label:'Tercero'},{key:'amount',label:'Valor'},{key:'record_date',label:'Fecha'},{key:'status',label:'Estado'}] },
+    'Notas Crédito': { table:'gym_records', title:'Notas crédito · registro interno', description:'Registra solicitudes de devolución o corrección conservando la referencia original. No emite documento electrónico.', fields:[
+      {key:'title',label:'Concepto',required:true},{key:'person_name',label:'Cliente / tercero'},{key:'record_date',label:'Fecha',type:'date'},
+      {key:'amount',label:'Valor solicitado (COP)',type:'number'},{key:'detail_reference',label:'Venta / referencia'},{key:'notes',label:'Motivo y soporte',type:'textarea'},
+    ], columns:[{key:'title',label:'Concepto'},{key:'person_name',label:'Tercero'},{key:'amount',label:'Valor'},{key:'record_date',label:'Fecha'},{key:'status',label:'Estado'}] },
+    'Documento Soporte': { table:'gym_records', title:'Documentos soporte · control interno', description:'Lleva el registro de documentos recibidos y referencias. No genera Documento Soporte electrónico DIAN.', fields:[
+      {key:'title',label:'Documento / concepto',required:true},{key:'person_name',label:'Proveedor / tercero'},{key:'record_date',label:'Fecha',type:'date'},
+      {key:'amount',label:'Valor (COP)',type:'number'},{key:'detail_document_number',label:'Número de documento'},{key:'detail_file_reference',label:'Referencia del archivo'},{key:'notes',label:'Observaciones',type:'textarea'},
+    ], columns:[{key:'title',label:'Documento'},{key:'person_name',label:'Tercero'},{key:'detail_document_number',label:'Número'},{key:'amount',label:'Valor'},{key:'record_date',label:'Fecha'}] },
+    'Notas Ajuste': { table:'gym_records', title:'Notas de ajuste · registro interno', description:'Registra correcciones administrativas de compras y gastos para revisión.', fields:[
+      {key:'title',label:'Concepto',required:true},{key:'person_name',label:'Proveedor / tercero'},{key:'record_date',label:'Fecha',type:'date'},
+      {key:'amount',label:'Valor (COP)',type:'number'},{key:'detail_reference',label:'Compra / referencia'},{key:'notes',label:'Motivo',type:'textarea'},
+    ], columns:[{key:'title',label:'Concepto'},{key:'person_name',label:'Tercero'},{key:'amount',label:'Valor'},{key:'record_date',label:'Fecha'},{key:'status',label:'Estado'}] },
+    'Tipos de Gastos': { table:'gym_records', title:'Tipos de gastos', description:'Catálogo de categorías para clasificar los egresos.', fields:[
+      {key:'title',label:'Nombre de categoría',required:true},{key:'status',label:'Estado',type:'select',options:[{value:'active',label:'Activa'},{value:'inactive',label:'Inactiva'}]},{key:'notes',label:'Descripción',type:'textarea'},
+    ], columns:[{key:'title',label:'Categoría'},{key:'notes',label:'Descripción'},{key:'status',label:'Estado'}] },
+    'Ajuste Cartera': { table:'gym_records', title:'Ajuste de cartera · solicitudes', description:'Documenta una solicitud de corrección; no altera saldos contables ni pagos automáticamente.', fields:[
+      {key:'title',label:'Concepto',required:true},{key:'person_name',label:'Cliente / tercero'},{key:'record_date',label:'Fecha',type:'date'},
+      {key:'amount',label:'Valor solicitado (COP)',type:'number'},{key:'detail_reference',label:'Cuenta / referencia'},{key:'notes',label:'Motivo de la solicitud',type:'textarea'},
+    ], columns:[{key:'title',label:'Concepto'},{key:'person_name',label:'Tercero'},{key:'amount',label:'Valor'},{key:'record_date',label:'Fecha'},{key:'status',label:'Estado'}] },
+    'Categorías de Producto': { table:'gym_records', title:'Categorías de producto', description:'Administra categorías para organizar el catálogo. Elige la categoría al crear o editar un producto.', fields:[
+      {key:'title',label:'Nombre de categoría',required:true},{key:'status',label:'Estado',type:'select',options:[{value:'active',label:'Activa'},{value:'inactive',label:'Inactiva'}]},{key:'notes',label:'Descripción',type:'textarea'},
+    ], columns:[{key:'title',label:'Categoría'},{key:'notes',label:'Descripción'},{key:'status',label:'Estado'}] },
+    'Ajustes de Inventario': { table:'gym_records', title:'Ajustes de inventario', description:'Registra ajustes justificados. Cada ajuste aprobado actualiza el stock y crea un movimiento en Kardex.', fields:[
+      {key:'title',label:'Motivo del ajuste',required:true},{key:'record_date',label:'Fecha',type:'date',required:true},
+      {key:'detail_product_id',label:'Producto',type:'select',options:[{value:'',label:'Seleccionar producto'},...(rows.products||[]).map(p=>({value:p.id,label:p.name}))],required:true},
+      {key:'detail_quantity',label:'Cantidad',type:'number',required:true},{key:'detail_direction',label:'Tipo',type:'select',options:[{value:'increase',label:'Entrada / sumar'},{value:'decrease',label:'Salida / restar'}],required:true},
+      {key:'notes',label:'Justificación',type:'textarea',required:true},
+    ], columns:[{key:'title',label:'Motivo'},{key:'detail_product_id',label:'Producto'},{key:'detail_quantity',label:'Cantidad'},{key:'record_date',label:'Fecha'},{key:'status',label:'Estado'}] },
+    'Regularizaciones de Inventario': { table:'gym_records', title:'Conteos y regularizaciones', description:'Registra conteos físicos. La diferencia queda como borrador hasta que se confirme mediante un ajuste auditado.', fields:[
+      {key:'title',label:'Conteo / referencia',required:true},{key:'record_date',label:'Fecha',type:'date',required:true},
+      {key:'detail_product_id',label:'Producto',type:'select',options:[{value:'',label:'Seleccionar producto'},...(rows.products||[]).map(p=>({value:p.id,label:p.name}))],required:true},
+      {key:'detail_counted_stock',label:'Existencia contada',type:'number',required:true},{key:'notes',label:'Observaciones',type:'textarea'},
+    ], columns:[{key:'title',label:'Conteo'},{key:'detail_product_id',label:'Producto'},{key:'detail_counted_stock',label:'Contado'},{key:'record_date',label:'Fecha'},{key:'status',label:'Estado'}] },
+    'Kardex de Inventario': { table:'stock_movements', title:'Kardex de inventario', description:'Consulta los movimientos reales de inventario; este historial no permite editar ni borrar operaciones.', fields:[], columns:[
+      {key:'product_id',label:'Producto'},{key:'movement_type',label:'Movimiento'},{key:'quantity',label:'Cantidad'},{key:'notes',label:'Motivo'},{key:'created_at',label:'Fecha'}
+    ] },
+    'Configuración de Reservaciones': { table:'gym_records', title:'Configuración de reservaciones', description:'Define reglas internas, horarios y cupos de referencia. Aún no hay motor externo de reservas ni bloqueo automático de cupos.', fields:[
+      {key:'title',label:'Nombre de la regla',required:true},{key:'status',label:'Estado',type:'select',options:[{value:'active',label:'Activa'},{value:'inactive',label:'Inactiva'}]},
+      {key:'detail_days',label:'Días disponibles'},{key:'detail_start_time',label:'Hora de inicio',type:'time'},{key:'detail_end_time',label:'Hora de fin',type:'time'},
+      {key:'detail_capacity',label:'Cupo de referencia',type:'number'},{key:'notes',label:'Condiciones',type:'textarea'},
+    ], columns:[{key:'title',label:'Regla'},{key:'detail_days',label:'Días'},{key:'detail_capacity',label:'Cupo'},{key:'status',label:'Estado'}] },
+    'Clases': { table:'gym_records', title:'Clases', description:'Programa clases y conserva fecha, instructor y cupo previsto.', fields:[
+      {key:'title',label:'Nombre de la clase',required:true},{key:'record_date',label:'Fecha',type:'date',required:true},{key:'detail_start_time',label:'Inicio',type:'time'},{key:'detail_end_time',label:'Fin',type:'time'},
+      {key:'detail_instructor',label:'Instructor'},{key:'detail_capacity',label:'Cupo',type:'number'},{key:'status',label:'Estado',type:'select',options:[{value:'scheduled',label:'Programada'},{value:'cancelled',label:'Cancelada'},{value:'completed',label:'Realizada'}]},{key:'notes',label:'Descripción',type:'textarea'},
+    ], columns:[{key:'title',label:'Clase'},{key:'record_date',label:'Fecha'},{key:'detail_start_time',label:'Inicio'},{key:'detail_instructor',label:'Instructor'},{key:'status',label:'Estado'}] },
+    'Reservaciones': { table:'gym_records', title:'Reservaciones', description:'Agenda manual de reservas y su estado. La validación automática de cupos y recordatorios aún no está conectada.', fields:[
+      {key:'title',label:'Actividad / clase',required:true},{key:'person_name',label:'Socio / persona',required:true},{key:'phone',label:'Teléfono'},
+      {key:'record_date',label:'Fecha de reserva',type:'date',required:true},{key:'detail_start_time',label:'Hora',type:'time'},
+      {key:'status',label:'Estado',type:'select',options:[{value:'reserved',label:'Reservada'},{value:'attended',label:'Asistió'},{value:'cancelled',label:'Cancelada'}]},{key:'notes',label:'Notas',type:'textarea'},
+    ], columns:[{key:'title',label:'Actividad'},{key:'person_name',label:'Persona'},{key:'record_date',label:'Fecha'},{key:'detail_start_time',label:'Hora'},{key:'status',label:'Estado'}] },
+    'Mi Sucursal': { table:'gym_records', title:'Mi sucursal', description:'Guarda los datos de referencia de la sede del gimnasio.', fields:[
+      {key:'title',label:'Nombre de la sede',required:true},{key:'phone',label:'Teléfono'},{key:'email',label:'Correo',type:'email'},
+      {key:'detail_address',label:'Dirección'},{key:'detail_opening_hours',label:'Horarios',type:'textarea'},{key:'notes',label:'Información adicional',type:'textarea'},
+    ], columns:[{key:'title',label:'Sede'},{key:'phone',label:'Teléfono'},{key:'email',label:'Correo'},{key:'detail_address',label:'Dirección'}] },
+    'Menú de Navegación': { table:'gym_records', title:'Menú de navegación', description:'Administra notas y organización de navegación; los permisos efectivos se controlan desde Usuarios.', fields:[
+      {key:'title',label:'Nombre del apartado',required:true},{key:'detail_group',label:'Grupo del menú'},{key:'detail_order',label:'Orden',type:'number'},{key:'status',label:'Estado',type:'select',options:[{value:'active',label:'Visible'},{value:'inactive',label:'Oculto'}]},{key:'notes',label:'Descripción',type:'textarea'},
+    ], columns:[{key:'title',label:'Apartado'},{key:'detail_group',label:'Grupo'},{key:'detail_order',label:'Orden'},{key:'status',label:'Estado'}] },
+    'Roles': { table:'gym_records', title:'Perfiles de permisos', description:'Guarda perfiles de permisos de referencia. Los permisos que realmente se aplican se administran usuario por usuario en Usuarios.', fields:[
+      {key:'title',label:'Nombre del perfil',required:true},{key:'notes',label:'Descripción',type:'textarea'},{key:'status',label:'Estado',type:'select',options:[{value:'active',label:'Activo'},{value:'inactive',label:'Inactivo'}]},
+    ], columns:[{key:'title',label:'Perfil'},{key:'notes',label:'Descripción'},{key:'status',label:'Estado'}] },
+    'Configuración de Correos': { table:'gym_records', title:'Configuración de correos', description:'El envío de invitaciones usa Supabase Auth. SMTP, URL del sitio y plantillas de autenticación deben configurarse en el panel Supabase; no guardes contraseñas SMTP aquí.', fields:[
+      {key:'title',label:'Nombre de la configuración',required:true},{key:'detail_sender_name',label:'Nombre del remitente'},{key:'detail_sender_email',label:'Correo del remitente',type:'email'},{key:'notes',label:'Notas de configuración',type:'textarea'},
+    ], columns:[{key:'title',label:'Configuración'},{key:'detail_sender_name',label:'Remitente'},{key:'detail_sender_email',label:'Correo'}] },
+    'Plantilla de Correos': { table:'gym_records', title:'Plantillas de correos', description:'Edita textos de referencia. El envío automático de estas plantillas no está conectado todavía.', fields:[
+      {key:'title',label:'Nombre de plantilla',required:true},{key:'detail_subject',label:'Asunto'},{key:'detail_body',label:'Contenido',type:'textarea'},{key:'status',label:'Estado',type:'select',options:[{value:'active',label:'Activa'},{value:'inactive',label:'Inactiva'}]},
+    ], columns:[{key:'title',label:'Plantilla'},{key:'detail_subject',label:'Asunto'},{key:'status',label:'Estado'}] },
+    'Notificaciones': { table:'gym_records', title:'Notificaciones internas', description:'Registra avisos internos para consulta en la administración. Push y correo masivo no están conectados.', fields:[
+      {key:'title',label:'Aviso',required:true},{key:'person_name',label:'Destinatario / grupo'},{key:'record_date',label:'Fecha',type:'date'},{key:'status',label:'Estado',type:'select',options:[{value:'draft',label:'Borrador'},{value:'active',label:'Activo'},{value:'closed',label:'Cerrado'}]},{key:'notes',label:'Mensaje',type:'textarea'},
+    ], columns:[{key:'title',label:'Aviso'},{key:'person_name',label:'Destinatario'},{key:'record_date',label:'Fecha'},{key:'status',label:'Estado'}] },
+    'Historial de Correos': { table:'gym_records', title:'Historial de correos', description:'Consulta solicitudes de invitación registradas. El estado refleja la solicitud a Supabase Auth, no confirma entrega o lectura del correo.', fields:[], columns:[
+      {key:'title',label:'Evento'},{key:'person_name',label:'Persona'},{key:'email',label:'Correo'},{key:'status',label:'Estado'},{key:'record_date',label:'Fecha'}
+    ] },
+  }
+
   const normalized: Section = section === 'Tarifas' || section === 'Lista de Precios' ? 'Planes' : section === 'Cuentas por Cobrar Pagos' ? 'Pagos' : section === 'Congelar Pagos' ? 'Miembros' : section
-  const config = base[normalized] as ModuleConfig | undefined
+  const config = (base[normalized] || aux[section]) as ModuleConfig | undefined
   if (!config) return null
   if (section === 'Cuentas por Cobrar Pagos') return { ...config, title: 'Cuentas por cobrar pagos', description: 'Abonos pendientes y saldos que faltan por recibir.' }
   if (section === 'Congelar Pagos') return { ...config, title: 'Congelar pagos', description: 'Clientes con actividad pausada y acciones para reactivar su tarifa.' }
   return config
 }
+
+
+const permissionKeyMap: Partial<Record<Section, string>> = {
+  'Inicio':'dashboard','Miembros':'members','Planes':'plans','Tarifas':'plans','Lista de Precios':'plans',
+  'Asistencia':'attendance','Pase diario':'day_pass','Pagos':'payments','Cuentas por Cobrar Pagos':'payments',
+  'Congelar Pagos':'members','Ventas':'sales','Notas Débito':'sales_adjustments','Notas Crédito':'sales_adjustments',
+  'Cuentas por Cobrar Ventas':'receivables_sales','Productos':'products','Compras':'purchases',
+  'Cuentas por Pagar Compras':'purchases','Gastos':'expenses','Tipos de Gastos':'expense_types',
+  'Ajuste Cartera':'receivables_adjustments','Categorías de Producto':'product_categories',
+  'Ajustes de Inventario':'inventory_adjustments','Regularizaciones de Inventario':'inventory_counts',
+  'Kardex de Inventario':'inventory_ledger','Evoluciones':'evolutions','Rutinas':'routines','Ejercicios':'exercises',
+  'Proveedores':'suppliers','Empleados':'employees','Documento Soporte':'supporting_documents','Notas Ajuste':'purchase_adjustments',
+  'Configuración de Reservaciones':'booking_settings','Clases':'classes','Reservaciones':'reservations',
+  'Mi Sucursal':'branch','Menú de Navegación':'navigation','Roles':'roles','Usuarios':'users',
+  'Configuración de Correos':'email_settings','Plantilla de Correos':'email_templates',
+  'Notificaciones':'notifications','Historial de Correos':'email_history','Caja':'cash','Informes':'reports',
+  'Auditoría':'audit','Configuración':'settings','Equipo':'employees',
+};
+function permissionKeyFor(section: Section): string { return permissionKeyMap[section] || 'misc' }
+
+const permissionGroups = [
+  { title:'Inicio y análisis', modules:[{key:'dashboard',label:'Panel de operaciones',actions:['view']},{key:'reports',label:'Informes',actions:['view']}] },
+  { title:'Clientes y asistencia', modules:[
+    {key:'members',label:'Miembros',actions:['view','create','update']},{key:'attendance',label:'Asistencia',actions:['view','create']},
+    {key:'day_pass',label:'Pases diarios',actions:['view','create']},{key:'evolutions',label:'Evoluciones',actions:['view','create','update']},
+    {key:'routines',label:'Rutinas',actions:['view','create','update']},{key:'exercises',label:'Ejercicios',actions:['view','create','update']},
+  ] },
+  { title:'Pagos y ventas', modules:[
+    {key:'plans',label:'Tarifas y listas de precios',actions:['view','create','update']},{key:'payments',label:'Pagos y cartera de pagos',actions:['view','create','update']},
+    {key:'sales',label:'Ventas',actions:['view','create','update']},{key:'receivables_sales',label:'Cartera de ventas',actions:['view','update']},
+    {key:'sales_adjustments',label:'Notas débito y crédito',actions:['view','create','update']},{key:'receivables_adjustments',label:'Ajustes de cartera',actions:['view','create','update']},
+  ] },
+  { title:'Productos e inventario', modules:[
+    {key:'products',label:'Productos',actions:['view','create','update']},{key:'product_categories',label:'Categorías',actions:['view','create','update']},
+    {key:'inventory_adjustments',label:'Ajustes de inventario',actions:['view','create']},{key:'inventory_counts',label:'Conteos y regularizaciones',actions:['view','create','update']},
+    {key:'inventory_ledger',label:'Kardex',actions:['view']},
+  ] },
+  { title:'Compras y egresos', modules:[
+    {key:'suppliers',label:'Proveedores',actions:['view','create','update']},{key:'purchases',label:'Compras y cuentas por pagar',actions:['view','create','update']},
+    {key:'supporting_documents',label:'Documentos soporte',actions:['view','create','update']},{key:'purchase_adjustments',label:'Notas de ajuste',actions:['view','create','update']},
+    {key:'expenses',label:'Gastos',actions:['view','create','update']},{key:'expense_types',label:'Tipos de gastos',actions:['view','create','update']},
+  ] },
+  { title:'Caja y agenda', modules:[
+    {key:'cash',label:'Caja',actions:['view','create','close']},{key:'booking_settings',label:'Configuración de reservaciones',actions:['view','create','update']},
+    {key:'classes',label:'Clases',actions:['view','create','update']},{key:'reservations',label:'Reservaciones',actions:['view','create','update']},
+  ] },
+  { title:'Administración', modules:[
+    {key:'employees',label:'Empleados y equipo',actions:['view','create','update']},{key:'branch',label:'Mi sucursal',actions:['view','update']},
+    {key:'navigation',label:'Menú de navegación',actions:['view','update']},{key:'roles',label:'Roles',actions:['view','update']},
+    {key:'audit',label:'Auditoría',actions:['view']},
+  ] },
+  { title:'Comunicaciones', modules:[
+    {key:'email_settings',label:'Configuración de correos',actions:['view']},{key:'email_templates',label:'Plantillas de correos',actions:['view','create','update']},
+    {key:'notifications',label:'Notificaciones internas',actions:['view','create','update']},{key:'email_history',label:'Historial de correos',actions:['view']},
+  ] },
+];
+const actionLabels: Record<string,string> = {view:'Consultar',create:'Crear',update:'Editar',close:'Cerrar'};
+const defaultCashierPermissions: Record<string,Record<string,boolean>> = {
+  dashboard:{view:true},members:{view:true,create:true,update:true},attendance:{view:true,create:true},
+  day_pass:{view:true,create:true},payments:{view:true,create:true,update:true},
+  sales:{view:true,create:true,update:true},products:{view:true},cash:{view:true,create:true,close:true},reports:{view:true},
+};
 
 export default function App() {
   const [section, setSection] = useState<Section>('Inicio')
@@ -171,6 +342,14 @@ export default function App() {
   const [authLoading, setAuthLoading] = useState(Boolean(supabaseConfigured))
   const [recoveryMode, setRecoveryMode] = useState(false)
   const [profile, setProfile] = useState<Row | null>(null)
+  const [profileLoading, setProfileLoading] = useState(Boolean(supabaseConfigured));
+  const [termsRecord, setTermsRecord] = useState<Row | null>(null);
+  const [termsStatus, setTermsStatus] = useState<'loading'|'required'|'accepted'|'error'>(supabaseConfigured ? 'loading' : 'accepted');
+  const [termsError, setTermsError] = useState('');
+  const [termsBusy, setTermsBusy] = useState(false);
+  const [userAcceptances, setUserAcceptances] = useState<Row[]>([]);
+  const [permissionHistory, setPermissionHistory] = useState<Row[]>([]);
+
   const [rows, setRows] = useState<Record<string, Row[]>>({})
   const [search, setSearch] = useState('')
   const [attendanceLookup, setAttendanceLookup] = useState('')
@@ -217,21 +396,84 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    if (session?.user) {
-      supabase?.from('profiles').select('*').eq('id', session.user.id).maybeSingle().then(({ data }) => setProfile(data))
-      void syncPending().then(() => refresh())
-    } else if (!supabaseConfigured) {
-      setProfile({ id: 'local-owner', full_name: 'Administrador local', role: 'owner', active: true })
-      void (async () => {
-        const currentPlans = await listRows('plans')
-        for (const plan of defaultTariffs) if (!currentPlans.some(row => row.name.toLowerCase() === plan.name.toLowerCase())) await saveRow('plans', { ...plan, created_by: null, created_at: nowIso(), updated_at: nowIso() })
-        await refresh()
-      })()
-    } else {
-      setRows({})
-      setProfile(null)
-    }
-  }, [session, refresh])
+    let cancelled = false;
+    const loadAccount = async () => {
+      if (session?.user && supabase) {
+        setProfileLoading(true);
+        setTermsStatus('loading');
+        setTermsError('');
+        setProfile(null);
+        const { data: profileData, error: profileError } = await supabase
+          .from('profiles').select('*').eq('id', session.user.id).maybeSingle();
+        if (cancelled) return;
+        if (profileError || !profileData) {
+          setProfileLoading(false);
+          setTermsStatus('error');
+          setTermsError(profileError?.message || 'La cuenta no tiene un perfil de acceso asociado.');
+          return;
+        }
+        setProfile(profileData);
+        setProfileLoading(false);
+        if (profileData.active === false) {
+          setTermsStatus('accepted');
+          return;
+        }
+        const { data: activeTerms, error: termsQueryError } = await supabase
+          .from('app_terms_versions').select('version,title,body,published_at').eq('active', true).maybeSingle();
+        if (cancelled) return;
+        if (termsQueryError || !activeTerms) {
+          setTermsStatus('error');
+          setTermsError(termsQueryError?.message || 'No hay una versión activa de los términos.');
+          return;
+        }
+        setTermsRecord({...activeTerms,id:String(activeTerms.version)});
+        const { data: acceptance, error: acceptanceError } = await supabase
+          .from('user_terms_acceptances').select('id,terms_version,accepted_at,permissions_version')
+          .eq('user_id', session.user.id).eq('terms_version', activeTerms.version)
+          .eq('permissions_version', Number(profileData.permissions_version || 1)).maybeSingle();
+        if (cancelled) return;
+        if (acceptanceError) {
+          setTermsStatus('error');
+          setTermsError(acceptanceError.message);
+          return;
+        }
+        setTermsStatus(acceptance ? 'accepted' : 'required');
+        if (profileData.role === 'owner') {
+          const { data: allAcceptances } = await supabase
+            .from('user_terms_acceptances').select('id,user_id,terms_version,accepted_at,permissions_version')
+            .order('accepted_at', { ascending:false });
+          if (!cancelled && allAcceptances) setUserAcceptances(allAcceptances as Row[]);
+          const { data: historyRows } = await supabase
+            .from('user_permission_history')
+            .select('id,user_id,changed_by,previous_permissions,new_permissions,permissions_version,changed_at')
+            .order('changed_at',{ascending:false});
+          if (!cancelled && historyRows) setPermissionHistory(historyRows as Row[]);
+        }
+        if (acceptance) void syncPending().then(() => refresh());
+      } else if (!supabaseConfigured) {
+        setProfile({ id:'local-owner',full_name:'Administrador local',role:'owner',active:true });
+        setProfileLoading(false);
+        setTermsStatus('accepted');
+        void (async () => {
+          const currentPlans = await listRows('plans');
+          for (const plan of defaultTariffs) if (!currentPlans.some(row => row.name.toLowerCase() === plan.name.toLowerCase())) {
+            await saveRow('plans', { ...plan, created_by:null, created_at:nowIso(), updated_at:nowIso() });
+          }
+          await refresh();
+        })();
+      } else {
+        setRows({});
+        setProfile(null);
+        setProfileLoading(false);
+        setTermsRecord(null);
+        setTermsStatus('loading');
+        setUserAcceptances([]);
+        setPermissionHistory([]);
+      }
+    };
+    void loadAccount();
+    return () => { cancelled = true; };
+  }, [session, refresh]);
 
   useEffect(() => {
     const onOnline = () => { void sync() }
@@ -245,8 +487,15 @@ export default function App() {
   const memberOptions = useMemo(() => (rows.members || []).map(m => ({ value: m.id, label: m.full_name })), [rows.members])
   const productOptions = useMemo(() => (rows.products || []).filter(p => p.active !== false).map(p => ({ value: p.id, label: `${p.name} · ${formatMoney(p.price)} · Stock ${p.stock}` })), [rows.products])
   const activeSession = (rows.cash_sessions || []).find(s => s.status === 'open')
-  const isOwner = profile?.role === 'owner'
-  const moduleConfig = configFor(section, rows)
+  const isOwner = profile?.role === 'owner' && profile?.active !== false
+  const canModule = (target: Section, action: string = 'view') => {
+    if (profile?.active === false) return false;
+    if (['Usuarios','Equipo','Configuración'].includes(target)) return profile?.role === 'owner';
+    if (profile?.role === 'owner') return true;
+    const modulePermissions=profile?.permissions?.[permissionKeyFor(target)];
+    return modulePermissions?.view === true && modulePermissions?.[action] === true;
+  };
+  const moduleConfig = canModule(section, 'view') ? configFor(section, rows) : null
   const moduleRows = moduleConfig ? (rows[moduleConfig.table] || []) : []
   const scopedRows = moduleConfig?.table === 'gym_records' ? moduleRows.filter(row => row.record_type === section) : section === 'Cuentas por Cobrar Pagos' ? moduleRows.filter(row => Number(row.amount || 0) > Number(row.amount_paid || 0) && row.status !== 'voided') : section === 'Cuentas por Cobrar Ventas' ? moduleRows.filter(row => Number(row.total || 0) > Number(row.amount_paid || 0) && row.status !== 'voided') : section === 'Cuentas por Pagar Compras' ? moduleRows.filter(row => Number(row.total_amount || 0) > Number(row.amount_paid || 0)) : section === 'Congelar Pagos' ? moduleRows.filter(row => Boolean(row.paused_at)) : moduleRows
   const filteredRows = scopedRows.filter(row => JSON.stringify(row).toLowerCase().includes(search.toLowerCase()))
@@ -290,17 +539,70 @@ export default function App() {
     setSection('Inicio')
   }
 
-  async function createStaffUser(payload: { full_name: string; email: string; role: 'owner' | 'cashier' }) {
-    if (!supabase || !isOwner) throw new Error('Solo un administrador puede crear usuarios.')
-    setBusy(true)
-    try {
-      const { data, error } = await supabase.functions.invoke('manage-user', { body: payload })
-      if (error) throw new Error(error.message || 'No se pudo enviar la invitación.')
-      await refresh()
-      notify(String(data?.message || 'Invitación enviada correctamente.'))
-    } finally {
-      setBusy(false)
+  async function acceptTerms() {
+    if (!supabase || !session?.user || !termsRecord) return;
+    setTermsBusy(true);
+    setTermsError('');
+    const { error } = await supabase.from('user_terms_acceptances').insert({
+      user_id: session.user.id,
+      terms_version: termsRecord.version,
+      permissions_version: Number(profile?.permissions_version || 1),
+    });
+    if (error && error.code !== '23505') {
+      setTermsError(error.message || 'No se pudo guardar la aceptación.');
+      setTermsBusy(false);
+      return;
     }
+    setTermsStatus('accepted');
+    setTermsBusy(false);
+    notify('Aceptación registrada. Ya puedes utilizar los apartados autorizados.');
+    if (profile?.role === 'owner') {
+      const { data } = await supabase.from('user_terms_acceptances').select('id,user_id,terms_version,accepted_at,permissions_version').order('accepted_at',{ascending:false});
+      if (data) setUserAcceptances(data as Row[]);
+      const {data:historyRows}=await supabase.from('user_permission_history').select('id,user_id,changed_by,previous_permissions,new_permissions,permissions_version,changed_at').order('changed_at',{ascending:false});
+      if (historyRows) setPermissionHistory(historyRows as Row[]);
+    }
+    void syncPending().then(() => refresh());
+  }
+
+  async function createStaffUser(payload: { full_name: string; email: string; role: 'owner' | 'cashier'; permissions: Record<string,Record<string,boolean>> }) {
+    if (!supabase || !isOwner) throw new Error('Solo un administrador puede crear usuarios.');
+    setBusy(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('manage-user', { body: payload });
+      if (error) throw new Error(error.message || 'No se pudo enviar la invitación.');
+      await refresh();
+      notify(String(data?.message || 'Invitación creada correctamente.'));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function updateStaffPermissions(userId:string, permissions:Record<string,Record<string,boolean>>, permissionsVersion:number) {
+    if (!supabase || !isOwner) throw new Error('Solo un administrador puede cambiar permisos.');
+    setBusy(true);
+    const { error } = await supabase.rpc('update_user_permissions', {
+      p_user_id:userId,
+      p_permissions:permissions,
+      p_expected_version:permissionsVersion,
+    });
+    setBusy(false);
+    if (error) throw new Error(error.message || 'No se pudieron guardar los permisos.');
+    await refresh();
+    const {data:historyRows}=await supabase.from('user_permission_history').select('id,user_id,changed_by,previous_permissions,new_permissions,permissions_version,changed_at').order('changed_at',{ascending:false});
+    if (historyRows) setPermissionHistory(historyRows as Row[]);
+    notify('Permisos actualizados. La persona deberá revisar y aceptar nuevamente los términos y permisos al volver a entrar.');
+  }
+
+  async function toggleStaffActive(user:Row) {
+    if (!supabase || !isOwner) throw new Error('Solo un administrador puede modificar cuentas.');
+    if (user.id === session?.user.id) { notify('No puedes desactivar la cuenta que estás utilizando.'); return; }
+    setBusy(true);
+    const { error } = await supabase.from('profiles').update({ active:user.active === false }).eq('id',user.id);
+    setBusy(false);
+    if (error) throw new Error(error.message || 'No se pudo actualizar el estado de la cuenta.');
+    await refresh();
+    notify(user.active === false ? 'Cuenta reactivada.' : 'Cuenta desactivada. Los permisos dejarán de autorizar operaciones.');
   }
 
   function printCashReport(record: Row) {
@@ -314,7 +616,7 @@ export default function App() {
     setEditing(edit || null)
     setProductImageFile(null); setProductImagePreview(edit?.image_url || '')
     const initial: Record<string, string> = {}
-    moduleConfig.fields.forEach(f => { initial[f.key] = edit?.[f.key] == null ? '' : String(edit[f.key]) })
+    moduleConfig.fields.forEach(f => { const value = f.key.startsWith('detail_') ? edit?.details?.[f.key.slice(7)] : edit?.[f.key]; initial[f.key] = value == null ? '' : String(value) })
     setForm(initial)
     setDialog('record')
   }
@@ -392,7 +694,16 @@ export default function App() {
       row.entered_at = nowIso()
     }
     if (section === 'Planes') row.active = form.active !== 'false'
-    if (moduleConfig.table === 'gym_records') { row.record_type = section; row.amount = Number(row.amount || 0) }
+    if (moduleConfig.table === 'gym_records') {
+      const detailValues = Object.fromEntries(Object.entries(form)
+        .filter(([key]) => key.startsWith('detail_'))
+        .map(([key,value]) => [key.slice(7), value === '' ? null : value]));
+      for (const key of Object.keys(row)) if (key.startsWith('detail_')) delete row[key];
+      row.details = { ...(editing?.details || {}), ...detailValues };
+      row.record_type = section;
+      row.module_key = permissionKeyFor(section);
+      row.amount = Number(row.amount || 0);
+    }
     setBusy(true)
     if (section === 'Productos' && productImageFile) {
       try {
@@ -411,17 +722,38 @@ export default function App() {
       }
     }
     try {
-      const stockMovementId = makeId()
-      const result = section === 'Productos' && !editing
-        ? await runBusinessRpc('create_product', { p_product: { ...row, stock_movement_id: stockMovementId } }, [
-            { table: 'products', row },
-            ...(Number(row.stock) > 0 ? [{ table: 'stock_movements' as const, row: { id: stockMovementId, product_id: row.id, movement_type: 'adjustment', quantity: Number(row.stock), notes: 'Existencias iniciales', created_by: session?.user.id || null, created_at: nowIso() } }] : []),
-          ])
-        : section === 'Productos' && editing
-          ? await updateRow(moduleConfig.table, row)
-          : section === 'Asistencia'
-            ? await runBusinessRpc('register_attendance', { p_attendance: row }, [{ table: 'attendance', row }])
-            : await saveRow(moduleConfig.table, row)
+      const stockMovementId = makeId();
+      let result;
+      if (section === 'Productos' && !editing) {
+        result = await runBusinessRpc('create_product', { p_product: { ...row, stock_movement_id: stockMovementId } }, [
+          { table: 'products', row },
+          ...(Number(row.stock) > 0 ? [{ table: 'stock_movements' as const, row: { id: stockMovementId, product_id: row.id, movement_type: 'adjustment', quantity: Number(row.stock), notes: 'Existencias iniciales', created_by: session?.user.id || null, created_at: nowIso() } }] : []),
+        ]);
+      } else if (section === 'Productos' && editing) {
+        result = await updateRow(moduleConfig.table, row);
+      } else if (section === 'Asistencia') {
+        result = await runBusinessRpc('register_attendance', { p_attendance: row }, [{ table: 'attendance', row }]);
+      } else if (section === 'Ajustes de Inventario') {
+        const details = row.details || {};
+        const product = rows.products?.find(p => p.id === details.product_id);
+        const quantity = Number(details.quantity || 0);
+        const delta = details.direction === 'decrease' ? -quantity : quantity;
+        if (!product || !Number.isInteger(quantity) || quantity <= 0 || delta === 0) {
+          notify('Selecciona un producto y una cantidad válida para el ajuste.'); return;
+        }
+        const movement = { id:stockMovementId,product_id:product.id,movement_type:'adjustment',quantity:delta,notes:String(row.notes || row.title),created_by:session?.user.id || null,created_at:nowIso() };
+        result = await runBusinessRpc('adjust_product_stock', {
+          p_product_id:product.id,p_delta:delta,p_reason:String(row.notes || row.title),p_movement_id:stockMovementId,
+        }, [
+          { table:'products',row:{...product,stock:Number(product.stock)+delta,updated_at:nowIso()} },
+          { table:'stock_movements',row:movement },
+        ]);
+        if (result.message?.startsWith('El servidor rechazó')) { notify(result.message); return; }
+        const recordResult = await saveRow('gym_records', {...row,status:result.synced?'applied':'pending_sync'});
+        if (recordResult.message?.startsWith('El servidor rechazó')) { notify(recordResult.message); return; }
+      } else {
+        result = await saveRow(moduleConfig.table, row);
+      }
       if (result.message?.startsWith('El servidor rechazó')) { notify(result.message); return }
       setDialog(null); setProductImageFile(null); setProductImagePreview('')
       notify(result.message || (result.synced ? 'Registro guardado y sincronizado.' : 'Registro guardado localmente.'))
@@ -457,29 +789,57 @@ export default function App() {
   }
 
   async function submitBalancePayment(event: FormEvent) {
-    event.preventDefault()
-    if (!editing) return
-    const due = Math.max(0, Number(editing.amount || 0) - Number(editing.amount_paid || 0))
-    const amount = Number(form.amount_paid || 0)
-    if (amount <= 0 || amount > due) { notify('El abono debe ser mayor que cero y no superar el saldo pendiente.'); return }
-    const cashMovementId = makeId()
-    const nextPaid = Number(editing.amount_paid || 0) + amount
-    const updated: Row = { ...editing, amount_paid: nextPaid, status: nextPaid >= Number(editing.amount) ? 'paid' : 'partial', paid_at: nextPaid >= Number(editing.amount) ? nowIso() : editing.paid_at, updated_at: nowIso() }
-    const member = rows.members?.find(m => m.id === editing.member_id)
-    const plan = rows.plans?.find(p => p.id === editing.plan_id)
-    const optimistic: { table: EntityTable; row: Row }[] = [
-      { table: 'payments', row: updated },
-      { table: 'cash_movements', row: { id: cashMovementId, cash_session_id: activeSession?.id || null, direction: 'income', amount, method: form.method || 'cash', description: 'Abono a cuenta por cobrar', reference_id: editing.id, created_by: session?.user.id || null, created_at: nowIso() } },
-    ]
-    if (nextPaid >= Number(editing.amount) && member && plan) {
-      const beginDate = member.end_date && member.end_date >= today() && member.status === 'active' ? datePlusDays(String(member.end_date), 1) : today()
-      optimistic.push({ table: 'members', row: { ...member, current_plan_id: plan.id, start_date: beginDate, end_date: datePlusDays(beginDate, Number(plan.duration_days) - 1), status: 'active', paused_at: null, updated_at: nowIso() } })
+    event.preventDefault();
+    if (!editing) return;
+    const isSale = section === 'Cuentas por Cobrar Ventas';
+    const isPurchase = section === 'Cuentas por Pagar Compras';
+    const amountField = isSale ? 'total' : isPurchase ? 'total_amount' : 'amount';
+    const total = Number(editing[amountField] || 0);
+    const due = Math.max(0,total-Number(editing.amount_paid||0));
+    const amount = Number(form.amount_paid||0);
+    if (!Number.isFinite(amount) || amount<=0 || amount>due) {
+      notify('El abono debe ser mayor que cero y no superar el saldo pendiente.'); return;
     }
-    setBusy(true)
-    const result = await runBusinessRpc('collect_payment_balance', { p_payment_id: editing.id, p_amount: amount, p_method: form.method || 'cash', p_cash_movement_id: cashMovementId }, optimistic)
-    setBusy(false); setDialog(null); setEditing(null)
-    notify(result.message || (result.synced ? 'Abono registrado correctamente.' : 'Abono guardado localmente, pendiente de sincronización.'))
-    await refresh()
+    const cashMovementId = makeId();
+    const nextPaid = Number(editing.amount_paid||0)+amount;
+    const updated: Row = {
+      ...editing,amount_paid:nextPaid,
+      status:nextPaid>=total?'paid':'partial',
+      paid_at:!isSale&&!isPurchase&&nextPaid>=total?nowIso():editing.paid_at,
+      updated_at:nowIso(),
+    };
+    const movement: Row = {
+      id:cashMovementId,cash_session_id:activeSession?.id||null,
+      direction:isPurchase?'expense':'income',amount,method:form.method||'cash',
+      description:isSale?'Abono a cuenta por cobrar de venta':isPurchase?'Abono a cuenta por pagar de compra':'Abono a cuenta por cobrar',
+      reference_id:editing.id,created_by:session?.user.id||null,created_at:nowIso(),
+    };
+    const table: EntityTable = isSale?'sales':isPurchase?'purchases':'payments';
+    const optimistic: {table:EntityTable;row:Row}[] = [
+      {table,row:updated},
+      {table:'cash_movements',row:movement},
+    ];
+    if (!isSale && !isPurchase && nextPaid>=total) {
+      const member=rows.members?.find(m=>m.id===editing.member_id);
+      const plan=rows.plans?.find(p=>p.id===editing.plan_id);
+      if(member&&plan){
+        const beginDate=member.end_date&&member.end_date>=today()&&member.status==='active'?datePlusDays(String(member.end_date),1):today();
+        optimistic.push({table:'members',row:{...member,current_plan_id:plan.id,start_date:beginDate,end_date:datePlusDays(beginDate,Number(plan.duration_days)-1),status:'active',paused_at:null,updated_at:nowIso()}});
+      }
+    }
+    const rpc = isSale?'collect_sales_balance':isPurchase?'collect_purchase_balance':'collect_payment_balance';
+    const args = isSale
+      ? {p_sale_id:editing.id,p_amount:amount,p_method:form.method||'cash',p_cash_movement_id:cashMovementId}
+      : isPurchase
+        ? {p_purchase_id:editing.id,p_amount:amount,p_method:form.method||'cash',p_cash_movement_id:cashMovementId}
+        : {p_payment_id:editing.id,p_amount:amount,p_method:form.method||'cash',p_cash_movement_id:cashMovementId};
+    setBusy(true);
+    const result = await runBusinessRpc(rpc,args,optimistic);
+    setBusy(false);
+    if (result.message?.startsWith('El servidor rechazó')) { notify(result.message); return; }
+    setDialog(null);setEditing(null);
+    notify(result.message||(result.synced?'Abono registrado correctamente.':'Abono guardado localmente, pendiente de sincronización.'));
+    await refresh();
   }
 
   async function submitDayPass(event: FormEvent) {
@@ -613,9 +973,12 @@ export default function App() {
     else openRecord()
   }
 
-  if (authLoading) return <div className="auth-screen"><div className="auth-card"><div className="brand-mark"><Dumbbell/></div><p>Comprobando acceso seguro…</p></div></div>
+  if (authLoading || (supabaseConfigured && session && (profileLoading || termsStatus==='loading'))) return <div className="auth-screen"><div className="auth-card"><div className="brand-mark"><Dumbbell/></div><p>Comprobando permisos y aceptación…</p></div></div>
   if (supabaseConfigured && recoveryMode && session) return <PasswordRecovery onSave={saveNewPassword} busy={busy} toast={toast} />
   if (supabaseConfigured && !session) return <Login onSignIn={signIn} onForgotPassword={requestPasswordRecovery} busy={busy} toast={toast} />
+  if (supabaseConfigured && session && termsStatus==='error') return <AccountHold message={termsError || 'No se pudo verificar el estado de tu cuenta.'} onSignOut={signOut}/>
+  if (supabaseConfigured && session && profile?.active===false) return <AccountDisabled onSignOut={signOut}/>
+  if (supabaseConfigured && session && termsStatus==='required' && termsRecord) return <TermsAcceptance terms={termsRecord} profile={profile || {id:'',role:'cashier'}} onAccept={acceptTerms} busy={termsBusy} error={termsError}/>
     const members = rows.members || []
   const recentPayments = rows.payments || []
   const activeMembers = members.filter(m => m.status === 'active' && (!m.end_date || m.end_date >= today())).length
@@ -629,9 +992,9 @@ export default function App() {
     <aside className={`sidebar ${menuOpen ? 'sidebar-open' : ''}`}>
       <div className="brand"><div className="brand-mark"><Dumbbell size={21}/></div><div><strong>ATLAS<span>GYMRUN</span></strong><small>GESTIÓN DE GIMNASIO</small></div><button className="mobile-close" onClick={() => setMenuOpen(false)}><X/></button></div>
       <div className="workspace-label">MENÚ PRINCIPAL</div>
-      <nav className="grouped-navigation">{navGroups.filter(group => !group.ownerOnly || isOwner).map(({ label, icon: Icon, target, items }) => items ? <div className="nav-group" key={label}>
+      <nav className="grouped-navigation">{navGroups.filter(group => group.items ? group.items.some(item => canModule(item.target, 'view') && (item.target !== 'Usuarios' || isOwner)) : Boolean(group.target && canModule(group.target, 'view'))).map(({ label, icon: Icon, target, items }) => items ? <div className="nav-group" key={label}>
         <button className={items.some(item => item.target === section) ? 'nav-item nav-parent active-parent' : 'nav-item nav-parent'} onClick={() => setExpandedGroups(v => ({ ...v, [label]: !v[label] }))}><Icon size={18}/><span>{label}</span><span className="nav-chevron">{expandedGroups[label] ? '⌄' : '›'}</span></button>
-        {expandedGroups[label] && <div className="nav-submenu">{items.map(item => <button key={item.target} className={section === item.target ? 'nav-subitem active' : 'nav-subitem'} onClick={() => handleSection(item.target)}><span className="nav-dash">–</span>{item.label}{item.target === 'Miembros' && <b className="nav-count">{members.length}</b>}</button>)}</div>}
+        {expandedGroups[label] && <div className="nav-submenu">{items.filter(item => canModule(item.target, 'view') && (item.target !== 'Usuarios' || isOwner)).map(item => <button key={item.target} className={section === item.target ? 'nav-subitem active' : 'nav-subitem'} onClick={() => handleSection(item.target)}><span className="nav-dash">–</span>{item.label}{item.target === 'Miembros' && <b className="nav-count">{members.length}</b>}</button>)}</div>}
       </div> : <button key={label} className={section === target ? 'nav-item active' : 'nav-item'} onClick={() => handleSection(target!)}><Icon size={18}/><span>{label}</span></button>)}</nav>
       {isOwner && <><div className="workspace-label admin-label">PROGRAMA</div>
       <nav><button className="nav-item" onClick={() => handleSection('Configuración')}><Shield size={18}/><span>Configuración del sistema</span></button><button className="nav-item" onClick={() => notify('El buzón de sugerencias estará disponible en una próxima versión.')}><ClipboardList size={18}/><span>Buzón de sugerencias</span></button></nav></>}
@@ -658,16 +1021,15 @@ export default function App() {
       {!supabaseConfigured && <div className="local-warning"><AlertTriangle size={16}/><span><strong>Modo local:</strong> la información se guarda solo en este navegador. Configura Supabase y accede con una cuenta antes de registrar datos reales.</span></div>}
       {supabaseConfigured && syncCount > 0 && <div className="sync-warning"><CloudOff size={15}/><span>{syncCount} operación(es) esperando sincronización. No cierres ni borres los datos del navegador hasta recuperar la conexión.</span><button onClick={() => void sync()}>Reintentar</button></div>}
       <div className="page">
-        {section === 'Inicio' && <Dashboard activeMembers={activeMembers} expiredMembers={expiredMembers} total={members.length} todayIncome={todayIncome} todayAttendances={(rows.attendance || []).filter(a => dateInBogota(a.entered_at) === today()).length} expiring={members.filter(m => m.end_date && m.end_date >= today() && m.end_date <= datePlusDays(today(), 7)).length} stockLow={stockLow} rows={rows} onNavigate={handleSection} />}
-        {section === 'Caja' && <CashPage session={activeSession} sessions={rows.cash_sessions || []} movements={rows.cash_movements || []} profiles={rows.profiles || []} onOpen={() => openSpecial('cash')} onClose={() => openSpecial('cash')} onPrint={printCashReport} />}
-        {section === 'Informes' && <Reports rows={rows} />}
+        {section === 'Inicio' && (canModule('Inicio','view') ? <Dashboard activeMembers={activeMembers} expiredMembers={expiredMembers} total={members.length} todayIncome={todayIncome} todayAttendances={(rows.attendance || []).filter(a => dateInBogota(a.entered_at) === today()).length} expiring={members.filter(m => m.end_date && m.end_date >= today() && m.end_date <= datePlusDays(today(), 7)).length} stockLow={stockLow} rows={rows} onNavigate={handleSection} /> : <AccessDenied />)}
+        {section === 'Caja' && (canModule('Caja','view') ? <CashPage session={activeSession} sessions={rows.cash_sessions || []} movements={rows.cash_movements || []} profiles={rows.profiles || []} canOpen={canModule('Caja','create')} canClose={canModule('Caja','close')} onOpen={() => openSpecial('cash')} onClose={() => openSpecial('cash')} onPrint={printCashReport} /> : <AccessDenied />)}
+        {section === 'Informes' && (canModule('Informes','view') ? <Reports rows={rows} /> : <AccessDenied />)}
         {section === 'Configuración' && (isOwner ? <SettingsPage onBackup={backup} onRestore={() => fileRef.current?.click()} onResetDemo={resetDemoData} onSeed={seedDemoData} busy={busy} /> : <AccessDenied />)}
-        {section === 'Productos' && <ProductCatalog products={filteredRows} onCreate={openCreate} onEdit={openRecord}/>}
-        {moduleConfig && section !== 'Productos' && <DataModule config={moduleConfig} rows={filteredRows} isOwner={Boolean(isOwner)} search={search} setSearch={setSearch} onCreate={openCreate} onEdit={openRecord} onTogglePause={toggleMemberPause} onMemberPayment={openMemberPayment} onCollectBalance={payment => { setEditing(payment); setForm({ amount_paid: String(Math.max(0, Number(payment.amount || 0) - Number(payment.amount_paid || 0))), method: 'cash' }); setDialog('balance') }} memberName={memberName} productName={productName} planName={planName} />}
-        {section === 'Usuarios' && (isOwner ? <UsersPage users={rows.profiles || []} onCreate={createStaffUser} busy={busy} /> : <AccessDenied />)}
-         {!moduleConfig && section !== 'Inicio' && section !== 'Caja' && section !== 'Informes' && section !== 'Configuración' && section !== 'Usuarios' && <PlaceholderModule title={section} />}
+        {section === 'Productos' && (moduleConfig ? <ProductCatalog products={filteredRows} onCreate={openCreate} onEdit={openRecord} canCreate={canModule('Productos','create')} canUpdate={canModule('Productos','update')}/> : <AccessDenied />)}
+        {moduleConfig && section !== 'Productos' && <DataModule config={moduleConfig} rows={filteredRows} canCreate={canModule(section,'create')} canUpdate={canModule(section,'update')} canCharge={canModule('Pagos','create')} search={search} setSearch={setSearch} onCreate={openCreate} onEdit={openRecord} onTogglePause={toggleMemberPause} onMemberPayment={openMemberPayment} onCollectBalance={record => { const total=Number(record.total??record.total_amount??record.amount??0); setEditing(record); setForm({ amount_paid: String(Math.max(0,total-Number(record.amount_paid||0))), method: 'cash' }); setDialog('balance') }} memberName={memberName} productName={productName} planName={planName} />}
+        {section === 'Usuarios' && (isOwner ? <UsersPage users={rows.profiles || []} onCreate={createStaffUser} onUpdatePermissions={updateStaffPermissions} onToggleActive={toggleStaffActive} acceptances={userAcceptances} permissionHistory={permissionHistory} activeTermsVersion={String(termsRecord?.version||'')} busy={busy} /> : <AccessDenied />)}
+        {!moduleConfig && !['Inicio','Caja','Informes','Configuración','Usuarios'].includes(section) && (canModule(section,'view') ? <PlaceholderModule title={section} /> : <AccessDenied />)}
         {section === 'Equipo' && !isOwner && <AccessDenied/>}
-        {section === 'Auditoría' && !isOwner && <AccessDenied/>}
         <footer>© 2026 Atlasgymrun <span>Gestión clara para entrenar mejor.</span></footer>
       </div>
     </main>
@@ -679,7 +1041,7 @@ export default function App() {
         {moduleConfig.fields.map(field => <FieldInput key={field.key} field={moduleConfig.table === 'products' && editing && field.key === 'stock' ? { ...field, disabled: true } : field} value={form[field.key] || (section === 'Miembros' && field.key === 'document_type' ? 'cedula_ciudadania' : '')} onChange={value => setForm(v => ({ ...v, [field.key]: value }))} />)}
         <div className="form-actions"><button type="button" className="secondary-button" onClick={() => setDialog(null)}>Cancelar</button><button disabled={busy} className="primary-button"><Check size={16}/>{busy ? 'Guardando…' : 'Guardar registro'}</button></div>
       </form>}
-      {dialog === 'balance' && editing && <form className="form-grid" onSubmit={submitBalancePayment}><div className="balance-summary full"><strong>{memberName(editing.member_id)}</strong><span>Saldo pendiente: {formatMoney(Number(editing.amount || 0)-Number(editing.amount_paid || 0))}</span></div><FieldInput field={{ key: 'amount_paid', label: 'Abono recibido (COP)', type: 'number', required: true }} value={form.amount_paid || ''} onChange={v => setForm(f => ({ ...f, amount_paid: v }))}/><FieldInput field={{ key: 'method', label: 'Método de pago', type: 'select', options: methods }} value={form.method || 'cash'} onChange={v => setForm(f => ({ ...f, method: v }))}/><p className="form-hint full">Solo registra transferencias o Nequi después de confirmar el abono en la cuenta. El abono no debe superar el saldo pendiente.</p><FormActions busy={busy} onCancel={() => setDialog(null)}/></form>}
+      {dialog === 'balance' && editing && <form className="form-grid" onSubmit={submitBalancePayment}><div className="balance-summary full"><strong>{section==='Cuentas por Cobrar Ventas'?'Venta #'+String(editing.id||'').slice(0,8):section==='Cuentas por Pagar Compras'?(editing.supplier||editing.description||'Compra'):memberName(editing.member_id)}</strong><span>Saldo pendiente: {formatMoney(Number(editing.total??editing.total_amount??editing.amount??0)-Number(editing.amount_paid||0))}</span></div><FieldInput field={{ key: 'amount_paid', label: 'Abono recibido (COP)', type: 'number', required: true }} value={form.amount_paid || ''} onChange={v => setForm(f => ({ ...f, amount_paid: v }))}/><FieldInput field={{ key: 'method', label: 'Método de pago', type: 'select', options: methods }} value={form.method || 'cash'} onChange={v => setForm(f => ({ ...f, method: v }))}/><p className="form-hint full">Solo registra transferencias o Nequi después de confirmar el abono en la cuenta. El abono no debe superar el saldo pendiente.</p><FormActions busy={busy} onCancel={() => setDialog(null)}/></form>}
       {dialog === 'payment' && <form className="form-grid" onSubmit={submitPayment}>
         <FieldInput field={{ key: 'member_id', label: 'Socio', type: 'select', options: memberOptions, required: true }} value={form.member_id || ''} onChange={v => { const member = rows.members?.find(m => m.id === v); const plan = rows.plans?.find(p => p.id === member?.current_plan_id && p.active !== false); setForm(f => ({ ...f, member_id: v, plan_id: plan?.id || '', amount: plan ? String(plan.price) : f.amount, amount_paid: plan ? String(plan.price) : f.amount_paid })) }}/>
         <FieldInput field={{ key: 'plan_id', label: 'Tarifa', type: 'select', required: true, options: (rows.plans || []).filter(p => p.active !== false).map(p => ({ value: p.id, label: p.name })) }} value={form.plan_id || ''} onChange={v => { const plan = rows.plans?.find(p => p.id === v); setForm(f => ({ ...f, plan_id: v, amount: plan ? String(plan.price) : f.amount, amount_paid: plan ? String(plan.price) : f.amount_paid })) }}/>
@@ -835,7 +1197,7 @@ function PlaceholderModule({ title }: { title: Section }) {
   return <section className="panel placeholder-module"><div className="eyebrow">MÓDULO DEL SISTEMA</div><h1>{title}</h1><p>{descriptions[title] || 'Este apartado conserva el nombre y la organización del programa actual.'}</p><div className="placeholder-note"><Shield size={17}/> Se activará cuando tenga sus tablas, permisos y pruebas completas.</div></section>
 }
 
-function DataModule({ config, rows, isOwner, search, setSearch, onCreate, onEdit, onTogglePause, onMemberPayment, onCollectBalance, memberName, productName, planName }: { config: ModuleConfig; rows: Row[]; isOwner:boolean; search:string; setSearch:(v:string)=>void; onCreate:()=>void; onEdit:(row:Row)=>void; onTogglePause:(row:Row)=>void; onMemberPayment:(row:Row)=>void; onCollectBalance:(row:Row)=>void; memberName:(id:unknown)=>string; productName:(id:unknown)=>string; planName:(id:unknown)=>string }) {
+function DataModule({ config, rows, canCreate, canUpdate, canCharge, search, setSearch, onCreate, onEdit, onTogglePause, onMemberPayment, onCollectBalance, memberName, productName, planName }: { config: ModuleConfig; rows: Row[]; canCreate:boolean; canUpdate:boolean; canCharge:boolean; search:string; setSearch:(v:string)=>void; onCreate:()=>void; onEdit:(row:Row)=>void; onTogglePause:(row:Row)=>void; onMemberPayment:(row:Row)=>void; onCollectBalance:(row:Row)=>void; memberName:(id:unknown)=>string; productName:(id:unknown)=>string; planName:(id:unknown)=>string }) {
   const [layout,setLayout]=useState<'table'|'cards'>('table')
   const [quickFilter,setQuickFilter]=useState('all')
   const [sort,setSort]=useState<{key:string;direction:'asc'|'desc'}>({key:'',direction:'asc'})
@@ -846,6 +1208,8 @@ function DataModule({ config, rows, isOwner, search, setSearch, onCreate, onEdit
     if (key === 'member_id') return memberName(value)
     if (key === 'document_type') return documentTypeLabel(value)
     if (key === 'product_id') return productName(value)
+    if (key === 'detail_product_id') return productName(row.details?.product_id)
+    if (key.startsWith('detail_')) return row.details?.[key.slice(7)] ?? '—'
     if (key === 'plan_id' || key === 'current_plan_id') return planName(value)
     if (key.includes('amount') || key === 'price' || key === 'cost' || key === 'total') return formatMoney(value)
     if (key.includes('date') || key.endsWith('_at')) return formatDate(value)
@@ -857,8 +1221,8 @@ function DataModule({ config, rows, isOwner, search, setSearch, onCreate, onEdit
     return value == null || value === '' ? '—' : String(value)
   }
 
-  const canEdit = config.table === 'members' || config.table === 'gym_records' || (isOwner && (config.table === 'plans' || config.table === 'products'))
-  const showActions = canEdit || config.table === 'payments'
+  const canEdit = canUpdate && ['members','gym_records','plans','products'].includes(config.table)
+  const showActions = canEdit || (canCharge && config.table === 'members') || (canUpdate && ['payments','sales','purchases'].includes(config.table))
   const filterOptions = config.table === 'members'
     ? [{value:'all',label:'Todos'},{value:'active',label:'Activos'},{value:'expiring',label:'Por vencer'},{value:'expired',label:'Vencidos'},{value:'paused',label:'Pausados'},{value:'inactive',label:'Inactivos'}]
     : config.table === 'payments'
@@ -875,7 +1239,7 @@ function DataModule({ config, rows, isOwner, search, setSearch, onCreate, onEdit
     if (quickFilter === 'expiring') return config.table === 'members' && memberIsActive(row) && Boolean(row.end_date) && String(row.end_date) <= datePlusDays(today(), 7)
     if (quickFilter === 'expired') return config.table === 'members' && !row.paused_at && Boolean(row.end_date) && String(row.end_date) < today()
     if (quickFilter === 'inactive') return !row.paused_at && (row.status === 'inactive' || row.active === false)
-    if (quickFilter === 'pending') return Number(row.amount || 0) > Number(row.amount_paid || 0) && row.status !== 'voided'
+    if (quickFilter === 'pending') return Number(row.total ?? row.total_amount ?? row.amount ?? 0) > Number(row.amount_paid || 0) && row.status !== 'voided'
     if (quickFilter === 'paid') return row.status === 'paid' || Number(row.amount || 0) <= Number(row.amount_paid || 0)
     return true
   })
@@ -896,9 +1260,9 @@ function DataModule({ config, rows, isOwner, search, setSearch, onCreate, onEdit
   }) : visibleRows
 
   const toggleSort = (key:string) => setSort(current => ({key,direction:current.key===key && current.direction==='asc'?'desc':'asc'}))
-  const actionsFor = (row:Row) => <>{canEdit && <button className="table-action" onClick={()=>onEdit(row)} title="Editar registro"><Pencil size={14}/></button>}{config.table==='members' && <><button className="table-action" onClick={()=>onMemberPayment(row)} title="Registrar pago"><CircleDollarSign size={14}/></button><button className="table-action" onClick={()=>onTogglePause(row)} title={row.paused_at?'Reactivar actividad':'Pausar actividad'}>{row.paused_at?<Play size={14}/>:<Pause size={14}/>}</button></>}{config.table==='payments' && Number(row.amount||0)>Number(row.amount_paid||0) && row.status!=='voided' && <button className="table-action" onClick={()=>onCollectBalance(row)} title="Cobrar saldo">Abonar</button>}</>
+  const actionsFor = (row:Row) => <>{canEdit && <button className="table-action" onClick={()=>onEdit(row)} title="Editar registro"><Pencil size={14}/></button>}{config.table==='members' && <>{canCharge && <button className="table-action" onClick={()=>onMemberPayment(row)} title="Registrar pago"><CircleDollarSign size={14}/></button>}{canUpdate && <button className="table-action" onClick={()=>onTogglePause(row)} title={row.paused_at?'Reactivar actividad':'Pausar actividad'}>{row.paused_at?<Play size={14}/>:<Pause size={14}/>}</button>}</>}{canUpdate && ['payments','sales','purchases'].includes(config.table) && Number(row[config.table==='sales'?'total':config.table==='purchases'?'total_amount':'amount']||0)>Number(row.amount_paid||0) && row.status!=='voided' && <button className="table-action" onClick={()=>onCollectBalance(row)} title="Registrar abono">Abonar</button>}</>
 
-  return <><div className="module-heading"><div><div className="eyebrow">GESTIÓN</div><h1>{config.title}</h1><p>{config.description}</p></div>{config.fields.length > 0 && config.title !== 'Congelar pagos' && (config.table !== 'plans' && config.table !== 'products' || isOwner) && <button className="primary-button" onClick={onCreate}><Plus size={16}/> Nuevo registro</button>}{config.table === 'day_passes' && <button className="primary-button" onClick={onCreate}><Plus size={16}/> Nuevo pase</button>}{config.table === 'payments' && <button className="primary-button" onClick={onCreate}><Plus size={16}/> Registrar pago</button>}{config.table === 'sales' && <button className="primary-button" onClick={onCreate}><Plus size={16}/> Nueva venta</button>}{config.table === 'purchases' && <button className="primary-button" onClick={onCreate}><Plus size={16}/> Registrar compra</button>}{config.table === 'expenses' && <button className="primary-button" onClick={onCreate}><Plus size={16}/> Registrar gasto</button>}</div>
+  return <><div className="module-heading"><div><div className="eyebrow">GESTIÓN</div><h1>{config.title}</h1><p>{config.description}</p></div>{canCreate && config.fields.length > 0 && config.title !== 'Congelar pagos' && <button className="primary-button" onClick={onCreate}><Plus size={16}/> Nuevo registro</button>}{canCreate && config.table === 'day_passes' && <button className="primary-button" onClick={onCreate}><Plus size={16}/> Nuevo pase</button>}{canCreate && config.table === 'payments' && config.title !== 'Cuentas por cobrar pagos' && <button className="primary-button" onClick={onCreate}><Plus size={16}/> Registrar pago</button>}{canCreate && config.table === 'sales' && config.title !== 'Cuentas por cobrar de ventas' && <button className="primary-button" onClick={onCreate}><Plus size={16}/> Nueva venta</button>}{canCreate && config.table === 'purchases' && config.title !== 'Cuentas por pagar de compras' && <button className="primary-button" onClick={onCreate}><Plus size={16}/> Registrar compra</button>}{canCreate && config.table === 'expenses' && <button className="primary-button" onClick={onCreate}><Plus size={16}/> Registrar gasto</button>}</div>
     <section className="panel data-panel admin-data-panel">
       <div className="admin-data-toolbar">
         <div className="admin-data-summary"><strong>{orderedRows.length}</strong><span>de {rows.length} registro(s)</span></div>
@@ -912,14 +1276,14 @@ function DataModule({ config, rows, isOwner, search, setSearch, onCreate, onEdit
     {config.table==='products' && <div className="module-footnote"><AlertTriangle size={14}/> Los ajustes directos de existencias deben justificarse. Próxima mejora: pantalla dedicada para ajustes auditados.</div>}
   </>
 }
-function CashPage({ session, sessions, movements, profiles, onOpen, onClose, onPrint }: { session?:Row; sessions:Row[]; movements:Row[]; profiles:Row[]; onOpen:()=>void; onClose:()=>void; onPrint:(row:Row)=>void }) {
+function CashPage({ session, sessions, movements, profiles, canOpen, canClose, onOpen, onClose, onPrint }: { session?:Row; sessions:Row[]; movements:Row[]; profiles:Row[]; canOpen:boolean; canClose:boolean; onOpen:()=>void; onClose:()=>void; onPrint:(row:Row)=>void }) {
   const currentMovements = session ? movements.filter(m=>m.cash_session_id===session.id) : []
   const cashIncome = currentMovements.filter(m=>m.method==='cash'&&m.direction==='income').reduce((s,m)=>s+Number(m.amount),0)
   const cashExpense = currentMovements.filter(m=>m.method==='cash'&&m.direction==='expense').reduce((s,m)=>s+Number(m.amount),0)
   const expected = Number(session?.initial_cash || 0) + cashIncome - cashExpense
   const profileName = (id:unknown) => profiles.find(p=>p.id===id)?.full_name || 'Usuario'
   const closedSessions = sessions.filter(s=>s.status==='closed').sort((a,b)=>String(b.closed_at||'').localeCompare(String(a.closed_at||'')))
-  return <><div className="module-heading"><div><div className="eyebrow">CONTROL FINANCIERO</div><h1>Caja</h1><p>Apertura, movimientos y cierre con diferencia de efectivo.</p></div>{session ? <button className="primary-button" onClick={onClose}>Cerrar caja</button> : <button className="primary-button" onClick={onOpen}><Plus size={16}/> Abrir caja</button>}</div>
+  return <><div className="module-heading"><div><div className="eyebrow">CONTROL FINANCIERO</div><h1>Caja</h1><p>Apertura, movimientos y cierre con diferencia de efectivo.</p></div>{session ? (canClose ? <button className="primary-button" onClick={onClose}>Cerrar caja</button> : <span className="users-state">Caja abierta · sin permiso de cierre</span>) : (canOpen ? <button className="primary-button" onClick={onOpen}><Plus size={16}/> Abrir caja</button> : null)}</div>
     <div className="stats-grid cash-stats"><Stat icon={<Wallet/>} label="Estado de caja" value={session?'Abierta':'Cerrada'} change={session?formatDate(session.opened_at):'Sin sesión activa'} tint="green"/><Stat icon={<CircleDollarSign/>} label="Base inicial" value={formatMoney(session?.initial_cash)} change="Efectivo de apertura" tint="blue"/><Stat icon={<ArrowUpRight/>} label="Ingresos en efectivo" value={formatMoney(cashIncome)} change="Solo dinero recibido" tint="yellow"/><Stat icon={<ArrowDownRight/>} label="Efectivo esperado" value={formatMoney(expected)} change="Base + ingresos − egresos" tint="purple"/></div>
     <section className="panel data-panel"><div className="panel-heading"><div><h2>Movimientos de esta caja</h2><p>Otros métodos de pago se muestran en registros, pero no suman al efectivo.</p></div></div>{currentMovements.length ? <div className="table-wrap"><table><thead><tr><th>Tipo</th><th>Descripción</th><th>Método</th><th>Valor</th><th>Fecha</th></tr></thead><tbody>{currentMovements.map(m=><tr key={m.id}><td>{m.direction==='income'?'Ingreso':'Salida'}</td><td>{m.description}</td><td>{m.method}</td><td>{formatMoney(m.amount)}</td><td>{formatDate(m.created_at)}</td></tr>)}</tbody></table></div> : <Empty text="Sin movimientos vinculados a la caja abierta."/ >}</section>
     <section className="panel data-panel"><div className="panel-heading"><div><h2>Cierres anteriores</h2><p>Descarga el comprobante completo de cada cierre en PDF.</p></div></div>{closedSessions.length ? <div className="table-wrap"><table><thead><tr><th>Apertura</th><th>Cierre</th><th>Responsable</th><th>Esperado</th><th>Contado</th><th>Diferencia</th><th>PDF</th></tr></thead><tbody>{closedSessions.map(s=><tr key={s.id}><td>{formatDate(s.opened_at)}</td><td>{formatDate(s.closed_at)}</td><td>{profileName(s.closed_by || s.opened_by)}</td><td>{formatMoney(s.expected_cash)}</td><td>{formatMoney(s.counted_cash)}</td><td className={Number(s.difference)===0?'cash-difference-ok':'cash-difference-alert'}>{formatMoney(s.difference)}</td><td><button className="table-action cash-print-button" title="Imprimir o guardar cierre en PDF" onClick={()=>onPrint(s)}><Printer size={15}/></button></td></tr>)}</tbody></table></div>:<Empty text="Aún no hay cierres guardados."/ >}</section>
@@ -961,31 +1325,155 @@ function Reports({ rows }: { rows:Record<string,Row[]> }) {
 function SettingsPage({ onBackup, onRestore, onResetDemo, onSeed, busy }: { onBackup:()=>void; onRestore:()=>void; onResetDemo:()=>void; onSeed:()=>void; busy:boolean }) {
   return <><div className="module-heading"><div><div className="eyebrow">SISTEMA</div><h1>Configuración</h1><p>Respaldo, continuidad y entorno de pruebas.</p></div></div><div className="content-grid"><section className="panel setting-card"><div className="setting-icon"><FileDown/></div><h2>Respaldo local</h2><p>Descarga un archivo JSON con los datos guardados en este navegador. El respaldo puede contener información personal; protégelo.</p><button className="primary-button" onClick={onBackup}><Download size={16}/> Exportar respaldo</button></section><section className="panel setting-card"><div className="setting-icon"><FileUp/></div><h2>Restaurar respaldo</h2><p>Importa un respaldo previamente exportado en el dispositivo actual. Los registros se agregan o actualizan.</p><button className="secondary-button" onClick={onRestore}><FileUp size={16}/> Seleccionar archivo</button></section></div><section className="panel setting-card"><div className="setting-icon"><Activity/></div><h2>Modo de demostración</h2><p>Carga registros ficticios para probar miembros, pagos, asistencias, productos, ventas, compras, gastos e informes. Quedan identificados como DEMO y pueden limpiarse sin tocar los datos reales.</p><button className="primary-button" disabled={busy} onClick={onSeed}><Plus size={16}/> {busy?"Procesando…":"Cargar datos de demostración"}</button><button className="secondary-button" disabled={busy} onClick={onResetDemo}>Limpiar datos DEMO</button></section><section className="panel security-panel"><Shield/><div><h2>Seguridad y acceso</h2><p>Las cuentas son individuales. Los administradores invitan usuarios desde el módulo Usuarios y asignan el nivel Administrador o Trabajador. No compartas contraseñas ni claves secretas.</p></div></section></>
 }
-function AccessDenied(){return <div className="panel access-denied"><Shield size={25}/><h2>Acceso reservado al propietario</h2><p>Este módulo contiene información administrativa. Solicita al propietario que revise los permisos de tu cuenta.</p></div>}
-function UsersPage({ users, onCreate, busy }: { users:Row[]; onCreate:(payload:{full_name:string;email:string;role:'owner'|'cashier'})=>Promise<void>; busy:boolean }) {
-  const [fullName,setFullName]=useState('')
-  const [email,setEmail]=useState('')
-  const [role,setRole]=useState<'owner'|'cashier'>('cashier')
-  const [feedback,setFeedback]=useState('')
-  const [error,setError]=useState(false)
+function AccessDenied(){return <div className="panel access-denied"><Shield size={25}/><h2>No tienes permiso para este apartado</h2><p>El administrador puede habilitar la consulta o las acciones necesarias desde Usuarios y permisos.</p></div>}
+
+function AccountHold({message,onSignOut}:{message:string;onSignOut:()=>void}) {
+ return <div className="auth-screen"><section className="auth-card"><div className="brand-mark"><Shield/></div><div className="eyebrow">ATLASGYMRUN · ACCESO</div><h1>No se pudo validar tu cuenta</h1><p>{message}</p><button className="primary-button auth-submit" onClick={onSignOut}>Cerrar sesión</button></section></div>;
+}
+function AccountDisabled({onSignOut}:{onSignOut:()=>void}) {
+ return <div className="auth-screen"><section className="auth-card"><div className="brand-mark"><Shield/></div><div className="eyebrow">ATLASGYMRUN · ACCESO</div><h1>Cuenta desactivada</h1><p>El administrador desactivó este acceso. Ponte en contacto con el responsable del gimnasio si consideras que se trata de un error.</p><button className="primary-button auth-submit" onClick={onSignOut}>Cerrar sesión</button></section></div>;
+}
+function TermsAcceptance({terms,profile,onAccept,busy,error}:{terms:Row;profile:Row;onAccept:()=>void;busy:boolean;error:string}) {
+ const [checked,setChecked]=useState(false);
+ const role=profile.role==='owner'?'Administrador':'Trabajador';
+ const allowed=permissionGroups.map(group=>({...group,modules:group.modules.filter(module=>module.actions.some(action=>profile.role==='owner'||(profile.permissions?.[module.key]?.view===true&&profile.permissions?.[module.key]?.[action]===true)))})).filter(group=>group.modules.length);
+ return <div className="terms-screen"><section className="terms-card">
+   <div className="brand"><div className="brand-mark"><Dumbbell size={21}/></div><div><strong>ATLAS<span>GYMRUN</span></strong><small>GESTIÓN DE GIMNASIO</small></div></div>
+   <div className="eyebrow">PRIMER ACCESO · ACEPTACIÓN DIGITAL</div><h1>{terms.title||'Términos y condiciones de uso'}</h1>
+   <p className="terms-intro">Antes de entrar, revisa las condiciones de uso y los permisos que el administrador asignó a tu cuenta.</p>
+   <div className="terms-version">Versión {terms.version} · Perfil: {role}</div>
+   <div className="terms-body">{String(terms.body||'').split('\n').map((line,index)=><p key={index}>{line||' '}</p>)}</div>
+   <section className="terms-permissions"><h2>Permisos de esta cuenta</h2>
+     {profile.role==='owner'?<p>Tu cuenta de administrador tiene acceso completo a todos los apartados y acciones.</p>:allowed.length?allowed.map(group=><div key={group.title}><strong>{group.title}</strong><ul>{group.modules.map(module=><li key={module.key}>{module.label}: {module.actions.filter(action=>profile.permissions?.[module.key]?.view===true&&profile.permissions?.[module.key]?.[action]===true).map(action=>actionLabels[action]).join(', ')}</li>)}</ul></div>):<p>Tu cuenta no tiene módulos habilitados. El administrador debe asignar permisos antes de que puedas trabajar.</p>}
+   </section>
+   <label className="terms-check"><input type="checkbox" checked={checked} onChange={event=>setChecked(event.target.checked)}/><span>He leído y acepto estos términos y el alcance de los permisos mostrados para mi cuenta.</span></label>
+   {error&&<div className="auth-error">{error}</div>}
+   <button className="primary-button auth-submit" disabled={!checked||busy} onClick={onAccept}>{busy?'Guardando aceptación…':'Aceptar y continuar'}</button>
+   <small>La aceptación queda asociada a tu usuario, la versión mostrada y la fecha registrada por el servidor.</small>
+ </section></div>;
+}
+function PermissionMatrix({value,onChange}:{value:Record<string,Record<string,boolean>>;onChange:(next:Record<string,Record<string,boolean>>)=>void}) {
+  function setPermission(moduleKey:string,action:string,enabled:boolean) {
+    const current={...(value[moduleKey]||{})};
+    if (action==='view' && !enabled) {
+      for (const key of Object.keys(current)) current[key]=false;
+      current.view=false;
+    } else {
+      current[action]=enabled;
+      if (enabled && action!=='view') current.view=true;
+    }
+    onChange({...value,[moduleKey]:current});
+  }
+  return <div className="permission-matrix">
+    {permissionGroups.map(group=><section className="permission-group" key={group.title}>
+      <h3>{group.title}</h3>
+      {group.modules.map(module=><div className="permission-row" key={module.key}>
+        <strong>{module.label}</strong>
+        <div>{module.actions.map(action=><label key={action}>
+          <input type="checkbox" checked={value[module.key]?.[action]===true} onChange={event=>setPermission(module.key,action,event.target.checked)}/>
+          <span>{actionLabels[action]||action}</span>
+        </label>)}</div>
+      </div>)}
+    </section>)}
+  </div>;
+}
+
+function UsersPage({ users,onCreate,busy,onUpdatePermissions,onToggleActive,acceptances,permissionHistory,activeTermsVersion }: {
+  users:Row[];
+  onCreate:(payload:{full_name:string;email:string;role:'owner'|'cashier';permissions:Record<string,Record<string,boolean>>})=>Promise<void>;
+  busy:boolean;
+  onUpdatePermissions:(id:string,permissions:Record<string,Record<string,boolean>>,permissionsVersion:number)=>Promise<void>;
+  onToggleActive:(user:Row)=>Promise<void>;
+  acceptances:Row[];
+  permissionHistory:Row[];
+  activeTermsVersion:string;
+}) {
+  const [fullName,setFullName]=useState('');
+  const [email,setEmail]=useState('');
+  const [role,setRole]=useState<'owner'|'cashier'>('cashier');
+  const [permissions,setPermissions]=useState<Record<string,Record<string,boolean>>>(()=>JSON.parse(JSON.stringify(defaultCashierPermissions)));
+  const [selectedUser,setSelectedUser]=useState<Row|null>(null);
+  const [historyUser,setHistoryUser]=useState<Row|null>(null);
+  const [editPermissions,setEditPermissions]=useState<Record<string,Record<string,boolean>>>({});
+  const [feedback,setFeedback]=useState('');
+  const [error,setError]=useState(false);
   async function submit(event:FormEvent) {
-    event.preventDefault()
-    setFeedback('');setError(false)
+    event.preventDefault();setFeedback('');setError(false);
     try {
-      await onCreate({full_name:fullName.trim(),email:email.trim(),role})
-      setFeedback('Invitación enviada. La persona debe abrir su correo y crear su contraseña.')
-      setFullName('');setEmail('');setRole('cashier')
-    } catch (err) {
-      setError(true)
-      setFeedback(err instanceof Error ? err.message : 'No se pudo crear la cuenta.')
+      await onCreate({full_name:fullName.trim(),email:email.trim(),role,permissions:role==='owner'?{}:permissions});
+      setFeedback('Invitación creada. La persona debe abrir el correo, activar la cuenta y aceptar los términos.');
+      setFullName('');setEmail('');setRole('cashier');setPermissions(JSON.parse(JSON.stringify(defaultCashierPermissions)));
+    } catch(err) {
+      setError(true);setFeedback(err instanceof Error?err.message:'No se pudo crear la cuenta.');
     }
   }
-  const roleLabel=(value:unknown)=>value==='owner'?'Administrador':'Trabajador'
-  return <><div className="module-heading"><div><div className="eyebrow">ADMINISTRACIÓN DE ACCESOS</div><h1>Usuarios</h1><p>Crea cuentas individuales y asigna el nivel de acceso de cada persona.</p></div></div>
-    <div className="users-layout"><section className="panel users-create-panel"><div className="panel-heading"><div><h2><UserPlus size={17}/> Invitar usuario</h2><p>Se enviará un correo para que configure su propia contraseña.</p></div></div>
-      <form className="users-create-form" onSubmit={submit}><label>Nombre completo<input value={fullName} onChange={e=>setFullName(e.target.value)} required minLength={2} maxLength={100} placeholder="Nombre de la persona"/></label><label>Correo electrónico<input type="email" value={email} onChange={e=>setEmail(e.target.value)} required maxLength={254} placeholder="persona@correo.com"/></label><label>Nivel de acceso<select value={role} onChange={e=>setRole(e.target.value as 'owner'|'cashier')}><option value="cashier">Trabajador · Operación diaria</option><option value="owner">Administrador · Acceso completo</option></select></label><div className="users-role-help"><Shield size={16}/><span>{role==='owner'?'El administrador puede gestionar usuarios, configuración, tarifas y todos los módulos.':'El trabajador puede operar los módulos diarios, pero no gestionar usuarios ni la configuración administrativa.'}</span></div><button className="primary-button" disabled={busy}><Mail size={16}/>{busy?'Enviando invitación…':'Enviar invitación'}</button>{feedback&&<p className={error?'users-feedback error':'users-feedback'}>{feedback}</p>}</form>
-    </section><section className="panel users-list-panel"><div className="panel-heading"><div><h2>Personal registrado</h2><p>{users.length} cuenta(s) con perfil</p></div></div>{users.length?<div className="users-list">{users.map(user=><div className="users-list-row" key={user.id}><div className="users-avatar">{String(user.full_name||'U').slice(0,1).toUpperCase()}</div><div className="users-info"><strong>{user.full_name||'Usuario'}</strong><small>{user.email || user.id}</small></div><span className={user.role==='owner'?'users-role admin':'users-role worker'}>{roleLabel(user.role)}</span><span className={user.active===false?'users-state inactive':'users-state'}>{user.active===false?'Desactivado':'Activo'}</span></div>)}</div>:<Empty text="Todavía no hay usuarios registrados."/ >}</section></div>
-  </>
+  async function savePermissions() {
+    if(!selectedUser)return;
+    try {
+      await onUpdatePermissions(selectedUser.id,editPermissions,Number(selectedUser.permissions_version||1));
+      setSelectedUser(null);
+      setFeedback('Permisos actualizados correctamente.');
+    } catch(err) {
+      setError(true);setFeedback(err instanceof Error?err.message:'No se pudieron actualizar los permisos.');
+    }
+  }
+  async function changeActive(user:Row) {
+    try { await onToggleActive(user); }
+    catch(err) { setError(true);setFeedback(err instanceof Error?err.message:'No se pudo cambiar el estado.'); }
+  }
+  const roleLabel=(value:unknown)=>value==='owner'?'Administrador':'Trabajador';
+  const acceptanceByUser=new Map<string,Row>();
+  for (const item of acceptances) if (!acceptanceByUser.has(String(item.user_id))) acceptanceByUser.set(String(item.user_id),item);
+  return <>
+    <div className="module-heading"><div><div className="eyebrow">ADMINISTRACIÓN DE ACCESOS</div><h1>Usuarios y permisos</h1><p>Invita personas, asigna el acceso exacto y consulta quién aceptó las condiciones.</p></div></div>
+    <div className="users-layout">
+      <section className="panel users-create-panel">
+        <div className="panel-heading"><div><h2><UserPlus size={17}/> Invitar usuario</h2><p>La invitación se envía por Supabase Auth. Después de activar su cuenta, verá sus términos y permisos antes de entrar.</p></div></div>
+        <form className="users-create-form" onSubmit={submit}>
+          <label>Nombre completo<input value={fullName} onChange={e=>setFullName(e.target.value)} required minLength={2} maxLength={100} placeholder="Nombre de la persona"/></label>
+          <label>Correo electrónico<input type="email" value={email} onChange={e=>setEmail(e.target.value)} required maxLength={254} placeholder="persona@correo.com"/></label>
+          <label>Nivel de acceso<select value={role} onChange={e=>{const next=e.target.value as 'owner'|'cashier';setRole(next);if(next==='cashier')setPermissions(JSON.parse(JSON.stringify(defaultCashierPermissions)));}}>
+            <option value="cashier">Trabajador · permisos personalizados</option><option value="owner">Administrador · acceso completo</option>
+          </select></label>
+          {role==='owner' ? <div className="users-role-help"><Shield size={16}/><span>El administrador tiene acceso completo a todos los módulos y puede gestionar usuarios, permisos y configuración.</span></div> :
+            <details className="permission-details" open><summary>Configurar permisos del trabajador</summary><p>Los permisos marcados se mostrarán en el menú y se validarán también en la base de datos. No existe permiso para borrar movimientos financieros.</p><PermissionMatrix value={permissions} onChange={setPermissions}/></details>}
+          <button className="primary-button" disabled={busy}><Mail size={16}/>{busy?'Enviando invitación…':'Enviar invitación'}</button>
+          {feedback&&<p className={error?'users-feedback error':'users-feedback'}>{feedback}</p>}
+        </form>
+      </section>
+      <section className="panel users-list-panel">
+        <div className="panel-heading"><div><h2>Personal registrado</h2><p>{users.length} cuenta(s) con perfil</p></div></div>
+        {users.length?<div className="users-list">{users.map(user=>{
+          const acceptance=acceptanceByUser.get(user.id);
+          return <div className="users-list-row users-list-row-expanded" key={user.id}>
+            <div className="users-avatar">{String(user.full_name||'U').slice(0,1).toUpperCase()}</div>
+            <div className="users-info"><strong>{user.full_name||'Usuario'}</strong><small>{user.email||user.id}</small><small>{acceptance && acceptance.terms_version===activeTermsVersion && Number(acceptance.permissions_version||1)===Number(user.permissions_version||1) ? 'Aceptó '+acceptance.terms_version+' · '+formatDate(acceptance.accepted_at) : 'Debe aceptar términos/permisos vigentes'}</small></div>
+            <span className={user.role==='owner'?'users-role admin':'users-role worker'}>{roleLabel(user.role)}</span>
+            <span className={user.active===false?'users-state inactive':'users-state'}>{user.active===false?'Desactivado':'Activo'}</span>
+            {user.role!=='owner'&&<div className="users-row-actions">
+              <button type="button" className="secondary-button" onClick={()=>{setSelectedUser(user);setEditPermissions(JSON.parse(JSON.stringify(user.permissions||{})));}}>Permisos</button>
+              <button type="button" className="secondary-button" onClick={()=>setHistoryUser(user)}>Historial</button>
+              <button type="button" className="secondary-button" onClick={()=>void changeActive(user)}>{user.active===false?'Reactivar':'Desactivar'}</button>
+            </div>}
+          </div>;
+        })}</div>:<Empty text="Todavía no hay usuarios registrados."/>}
+      </section>
+    </div>
+    {historyUser&&<section className="panel permission-edit-panel">
+      <div className="panel-heading"><div><h2>Historial de permisos · {historyUser.full_name}</h2><p>Registro de versiones anteriores y nuevas de los permisos asignados.</p></div><button type="button" className="secondary-button" onClick={()=>setHistoryUser(null)}>Cerrar</button></div>
+      {permissionHistory.filter(item=>item.user_id===historyUser.id).length ? <div className="table-wrap"><table><thead><tr><th>Fecha</th><th>Versión</th><th>Permisos antes</th><th>Permisos después</th></tr></thead><tbody>
+        {permissionHistory.filter(item=>item.user_id===historyUser.id).map((item,index)=>{
+          const count=(value:unknown)=>Object.values((value||{}) as Record<string,Record<string,boolean>>).reduce((sum,actions)=>sum+Object.values(actions||{}).filter(Boolean).length,0);
+          return <tr key={String(item.permissions_version||index)}><td>{formatDate(item.changed_at)}</td><td>{item.permissions_version}</td><td>{count(item.previous_permissions)} acción(es)</td><td>{count(item.new_permissions)} acción(es)</td></tr>;
+        })}
+      </tbody></table></div> : <Empty text="Aún no hay cambios de permisos registrados para esta cuenta."/>}
+    </section>}
+    {selectedUser&&<section className="panel permission-edit-panel">
+      <div className="panel-heading"><div><h2>Permisos de {selectedUser.full_name}</h2><p>Los cambios se guardan en el perfil y se aplican a las próximas consultas y operaciones.</p></div><button type="button" className="secondary-button" onClick={()=>setSelectedUser(null)}>Cerrar</button></div>
+      <PermissionMatrix value={editPermissions} onChange={setEditPermissions}/>
+      <div className="form-actions"><button type="button" className="secondary-button" onClick={()=>setSelectedUser(null)}>Cancelar</button><button type="button" className="primary-button" disabled={busy} onClick={()=>void savePermissions()}>{busy?'Guardando…':'Guardar permisos'}</button></div>
+    </section>}
+  </>;
 }
 function Stat({icon,label,value,change,tint}:{icon:ReactNode;label:string;value:string;change:string;tint:string}){return <div className="stat-card"><div className={`stat-icon ${tint}`}>{icon}</div><span className="stat-label">{label}</span><strong className="stat-value">{value}</strong><small className="neutral">{change}</small></div>}
 function Quick({icon,label,onClick}:{icon:ReactNode;label:string;onClick:()=>void}){return <button className="quick-action" onClick={onClick}><span>{icon}</span><strong>{label}</strong><ArrowUpRight size={15}/></button>}
@@ -1007,11 +1495,11 @@ function ProductAdder({options,onAdd}:{options:{value:string;label:string}[];onA
  const [id,setId]=useState('');const [qty,setQty]=useState('1')
  return <div className="product-adder"><select value={id} onChange={e=>setId(e.target.value)}><option value="">Selecciona producto…</option>{options.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}</select><input aria-label="Cantidad" type="number" min="1" value={qty} onChange={e=>setQty(e.target.value)}/><button type="button" className="secondary-button" disabled={!id||Number(qty)<1} onClick={()=>{onAdd(id,Number(qty));setId('');setQty('1')}}><Plus size={15}/> Agregar</button></div>
 }
-function ProductCatalog({products,onCreate,onEdit}:{products:Row[];onCreate:()=>void;onEdit:(p:Row)=>void}) {
+function ProductCatalog({products,onCreate,onEdit,canCreate,canUpdate}:{products:Row[];onCreate:()=>void;onEdit:(p:Row)=>void;canCreate:boolean;canUpdate:boolean}) {
  const [category,setCategory]=useState('Todas');const [query,setQuery]=useState('')
  const categories=['Todas',...Array.from(new Set(products.map(p=>String(p.category||'Otros')))).sort()]
  const shown=products.filter(p=>(category==='Todas'||String(p.category||'Otros')===category)&&JSON.stringify(p).toLowerCase().includes(query.toLowerCase()))
- return <><div className="module-heading product-heading"><div><div className="eyebrow">INVENTARIO VISUAL</div><h1>Catálogo de productos</h1><p>Organiza por categorías, imágenes, precios y existencias.</p></div><button className="primary-button" onClick={onCreate}><Plus size={16}/> Añadir producto</button></div><div className="product-shelf-toolbar"><div className="pos-categories">{categories.map(cat=><button type="button" className={category===cat?'selected':''} key={cat} onClick={()=>setCategory(cat)}>{cat}</button>)}</div><label className="pos-catalog-search"><Search size={15}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar producto o código…"/></label></div><div className="product-shelf-grid">{shown.map(p=><button className="shelf-product-card" key={p.id} onClick={()=>onEdit(p)}><div className="shelf-product-image">{p.image_url?<img src={p.image_url} alt={p.name}/>:<div><Package size={30}/><small>Sin imagen</small></div>}<span className="shelf-category">{p.category||'Otros'}</span></div><div className="shelf-product-info"><strong>{p.name}</strong><small>{p.sku||'Sin código'}</small><div><b>{formatMoney(p.price)}</b><span className={Number(p.stock)<=Number(p.min_stock||0)?'low-stock':'stock-ok'}>{p.stock} unidades</span></div></div></button>)}</div>{!shown.length&&<Empty text="No hay productos registrados. Añade el primero para crear el catálogo."/>}</>
+ return <><div className="module-heading product-heading"><div><div className="eyebrow">INVENTARIO VISUAL</div><h1>Catálogo de productos</h1><p>Organiza por categorías, imágenes, precios y existencias.</p></div>{canCreate && <button className="primary-button" onClick={onCreate}><Plus size={16}/> Añadir producto</button>}</div><div className="product-shelf-toolbar"><div className="pos-categories">{categories.map(cat=><button type="button" className={category===cat?'selected':''} key={cat} onClick={()=>setCategory(cat)}>{cat}</button>)}</div><label className="pos-catalog-search"><Search size={15}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar producto o código…"/></label></div><div className="product-shelf-grid">{shown.map(p=><button className="shelf-product-card" key={p.id} disabled={!canUpdate} onClick={()=>canUpdate&&onEdit(p)}><div className="shelf-product-image">{p.image_url?<img src={p.image_url} alt={p.name}/>:<div><Package size={30}/><small>Sin imagen</small></div>}<span className="shelf-category">{p.category||'Otros'}</span></div><div className="shelf-product-info"><strong>{p.name}</strong><small>{p.sku||'Sin código'}</small><div><b>{formatMoney(p.price)}</b><span className={Number(p.stock)<=Number(p.min_stock||0)?'low-stock':'stock-ok'}>{p.stock} unidades</span></div></div></button>)}</div>{!shown.length&&<Empty text="No hay productos registrados. Añade el primero para crear el catálogo."/>}</>
 }
 function LineList({lines,products,onChange}:{lines:{product_id:string;quantity:number}[];products:Row[];onChange:(v:{product_id:string;quantity:number}[])=>void}) {
  return <div className="cart-lines">{lines.map(line=>{const p=products.find(x=>x.id===line.product_id);const stock=Number(p?.stock||0);return <div className="cart-line" key={line.product_id}><div className="cart-product">{p?.image_url?<img src={p.image_url} alt=""/>:<span className="cart-mini-placeholder"><Package size={15}/></span>}<span><strong>{p?.name||'Producto no disponible'}</strong><small>{p?.category||'Otros'} · Disponible: {stock}</small></span></div><div className="cart-quantity"><button type="button" disabled={line.quantity<=1} onClick={()=>onChange(lines.map(x=>x.product_id===line.product_id?{...x,quantity:Math.max(1,x.quantity-1)}:x))}>−</button><b>{line.quantity}</b><button type="button" disabled={line.quantity>=stock} onClick={()=>onChange(lines.map(x=>x.product_id===line.product_id?{...x,quantity:Math.min(stock,x.quantity+1)}:x))}>+</button></div><strong className="cart-line-total">{formatMoney(Number(p?.price||0)*line.quantity)}</strong><button className="cart-remove" type="button" aria-label="Quitar producto" onClick={()=>onChange(lines.filter(x=>x.product_id!==line.product_id))}><X size={14}/></button></div>})}{!lines.length&&<div className="cart-empty"><ShoppingBag size={25}/><strong>El carrito está esperando productos</strong><small>Toca una tarjeta del catálogo para añadirla.</small></div>}</div>

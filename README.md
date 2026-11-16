@@ -22,8 +22,14 @@ Aplicación de administración para un gimnasio de una sede. Incluye panel, soci
 - Imágenes de productos: modo local usa imágenes optimizadas en el almacenamiento local; con Supabase utiliza el bucket `product-images`.
 - El tablero incluye tendencias de ingresos de siete días, ventas agrupadas por categoría, indicadores y accesos inmediatos.
 - Configuración permite cargar y limpiar registros ficticios DEMO sin tocar datos reales. El reinicio total de registros operativos no está disponible desde la interfaz.
-- Los módulos auxiliares usan la tabla genérica `gym_records` y ofrecen altas, consulta, edición y búsqueda. No equivalen todavía a sistemas especializados de rutinas con ejercicios prescritos, envío de correos, reservas con cupos ni documentos electrónicos DIAN.
-- Los módulos de kardex y movimientos de inventario son de consulta. La creación de ajustes de stock con aprobación y motivo queda pendiente de una operación transaccional específica.
+- Los módulos auxiliares usan `gym_records` con una clave de módulo y un objeto JSON de detalles, por lo que sus formularios, búsquedas y ediciones quedan guardados por apartado. Rutinas, ejercicios, evoluciones, proveedores, personal, clases y reservas son registros operativos internos; no sustituyen un sistema clínico, de agenda con cupos o de nómina.
+- Inventario: los ajustes de stock pasan por una función transaccional que valida permisos, motivo, existencia disponible y registra el movimiento en Kardex. Los conteos físicos se guardan como borradores de regularización; confirmar el resultado requiere crear un ajuste justificado.
+- Cartera: los saldos pendientes de ventas y compras permiten registrar abonos, actualizan el saldo y generan un movimiento de caja vinculado. No se borra ni se reemplaza el documento original.
+- Notas débito/crédito, notas de ajuste y documentos soporte son controles y referencias internas. No generan documentos electrónicos DIAN ni reemplazan la contabilidad formal.
+- Reservaciones y clases permiten mantener una agenda manual; no bloquean cupos automáticamente ni envían recordatorios.
+- Comunicaciones: se registra la solicitud de invitación y los textos de plantillas/avisos. La entrega del correo depende del SMTP de Supabase; el registro de solicitud no equivale a confirmación de entrega o lectura. Push, campañas y envío automatizado de plantillas no están conectados.
+- Usuarios: cada trabajador puede recibir permisos por módulo y acción (consultar, crear, editar o cerrar cuando aplica). La base de datos aplica esos permisos mediante RLS y funciones transaccionales. Los cambios quedan en un historial de permisos, incrementan su versión y requieren una nueva aceptación de términos/permisos en el siguiente acceso.
+- Términos: la invitación no es un contrato laboral. En el primer acceso se muestra la versión vigente de las condiciones y el resumen exacto de permisos; el usuario debe aceptar y la aplicación guarda usuario, versión, fecha y versión de permisos.
 
 ### Migración adicional
 
@@ -54,6 +60,12 @@ Para modo local sin backend, deja vacías las variables de Supabase. Se mostrar�
 6. Guardarlas como `VITE_SUPABASE_URL` y `VITE_SUPABASE_PUBLISHABLE_KEY` en `.env.local` para desarrollo. Para GitHub Pages, créalas también en **Settings → Secrets and variables → Actions → Variables** con esos mismos nombres. El workflow de publicación las inyecta durante la compilación.
 7. Crear usuarios desde el módulo Usuarios de la aplicación. El administrador envía una invitación por correo y asigna Administrador o Trabajador. Configurar SMTP y la URL del sitio en Authentication → URL Configuration para que los enlaces de invitación regresen a la web. No compartir cuentas.
 8. Nunca colocar `service_role` ni claves secretas en variables `VITE_*`.
+
+### Acceso, términos y permisos
+
+La tabla `profiles` mantiene permisos JSON por módulo. La Edge Function `manage-user` invita al usuario y registra la asignación inicial; el usuario debe aceptar los términos vigentes antes de entrar. Los cambios de permisos se realizan mediante `update_user_permissions`, que conserva versiones anteriores en `user_permission_history`. La aceptación se relaciona con la versión de términos y la versión de permisos.
+
+Los nuevos cambios de base de datos están versionados en `supabase/migrations`. Al crear un proyecto nuevo, aplica todas las migraciones en orden cronológico después del esquema inicial. No uses la app con información real hasta completar la prueba de aceptación de roles y revisar la configuración de seguridad.
 
 ## 3. Publicación
 
