@@ -557,7 +557,7 @@ export default function App() {
     setTermsBusy(false);
     notify('Aceptación registrada. Ya puedes utilizar los apartados autorizados.');
     if (profile?.role === 'owner') {
-      const { data } = await supabase.from('user_terms_acceptances').select('user_id,terms_version,accepted_at,permissions_version').order('accepted_at',{ascending:false});
+      const { data } = await supabase.from('user_terms_acceptances').select('id,user_id,terms_version,accepted_at,permissions_version').order('accepted_at',{ascending:false});
       if (data) setUserAcceptances(data as Row[]);
       const {data:historyRows}=await supabase.from('user_permission_history').select('id,user_id,changed_by,previous_permissions,new_permissions,permissions_version,changed_at').order('changed_at',{ascending:false});
       if (historyRows) setPermissionHistory(historyRows as Row[]);
@@ -589,7 +589,7 @@ export default function App() {
     setBusy(false);
     if (error) throw new Error(error.message || 'No se pudieron guardar los permisos.');
     await refresh();
-    const {data:historyRows}=await supabase.from('user_permission_history').select('user_id,changed_by,previous_permissions,new_permissions,permissions_version,changed_at').order('changed_at',{ascending:false});
+    const {data:historyRows}=await supabase.from('user_permission_history').select('id,user_id,changed_by,previous_permissions,new_permissions,permissions_version,changed_at').order('changed_at',{ascending:false});
     if (historyRows) setPermissionHistory(historyRows as Row[]);
     notify('Permisos actualizados. La persona deberá revisar y aceptar nuevamente los términos y permisos al volver a entrar.');
   }
