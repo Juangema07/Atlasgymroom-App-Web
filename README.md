@@ -22,7 +22,7 @@ Aplicación de administración para un gimnasio de una sede. Incluye panel, soci
 - Imágenes de productos: modo local usa imágenes optimizadas en el almacenamiento local; con Supabase utiliza el bucket `product-images`.
 - El tablero incluye tendencias de ingresos de siete días, ventas agrupadas por categoría, indicadores y accesos inmediatos.
 - Configuración permite cargar y limpiar registros ficticios DEMO sin tocar datos reales. El reinicio total de registros operativos no está disponible desde la interfaz.
-- Los módulos auxiliares usan la tabla genérica `gym_records` y ofrecen altas, consulta, edición y búsqueda. No equivalen todavía a sistemas especializados de rutinas con ejercicios prescritos, envío de correos, reservas con cupos ni documentos electrónicos DIAN.
+- Los módulos auxiliares de gestión (evoluciones, rutinas, ejercicios, proveedores, empleados, reservaciones, clases, notas y referencias de cartera/inventario) ofrecen altas, consulta, edición y búsqueda sobre `gym_records`. Son registros operativos genéricos; no equivalen a rutinas prescritas, agenda con cupos, documentos electrónicos DIAN ni movimientos contables especializados.
 - Los módulos de kardex y movimientos de inventario son de consulta. La creación de ajustes de stock con aprobación y motivo queda pendiente de una operación transaccional específica.
 
 ### Migración adicional
@@ -42,7 +42,7 @@ Para modo local sin backend, deja vacías las variables de Supabase. Se mostrar�
 ## 2. Crear el backend Supabase
 
 1. Crear un proyecto en Supabase.
-2. Abrir **SQL Editor** y ejecutar en orden `supabase/migrations/202611080001_initial_schema.sql`, `supabase/migrations/202611080002_gym_records.sql` y `supabase/migrations/202611080003_pos_catalog_images_reset.sql`.
+2. Abrir **SQL Editor** y ejecutar en orden `supabase/migrations/202611080001_initial_schema.sql`, `supabase/migrations/202611080002_gym_records.sql`, `supabase/migrations/202611080003_pos_catalog_images_reset.sql` y `supabase/migrations/202611150001_user_consents.sql`.
 3. En **Authentication → Users**, crear el usuario propietario con correo y contraseña.
 4. Ejecutar al final del SQL (sustituyendo el correo):
    ```sql
@@ -115,7 +115,7 @@ La aplicación no debe considerarse producción hasta completar estas pruebas en
 
 ## Gestión segura de usuarios y cierres
 
-- El módulo Usuarios invita por correo a nuevas cuentas y asigna Administrador (`owner`) o Trabajador (`cashier`). La Edge Function valida el JWT y el perfil activo del administrador antes de utilizar la clave de servicio del lado servidor.
+- El módulo Usuarios invita por correo a nuevas cuentas y asigna Administrador (`owner`) o Trabajador (`cashier`). En el primer acceso, cada invitado debe aceptar los términos y las condiciones y revisar el resumen de permisos de su rol. La constancia guarda versión, texto, usuario, fecha y fotografía de permisos asignados; no es un contrato laboral ni de prestación de servicios. La Edge Function valida el JWT y el perfil activo del administrador antes de utilizar la clave de servicio del lado servidor.
 - El cierre de caja conserva quién abrió y quién cerró la sesión, calcula el efectivo esperado desde los movimientos del servidor y genera un informe imprimible en formato A4.
 - El acceso de reinicio total fue retirado de la interfaz y su función SQL quedó restringida a `service_role`.
 - La caché local se reconcilia con las filas visibles para la sesión autenticada y se impide cerrar sesión desde la interfaz mientras haya movimientos pendientes de sincronización.
