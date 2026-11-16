@@ -1094,7 +1094,17 @@ function UsersPage({ users, onCreate, busy }: { users:Row[]; onCreate:(payload:{
   const [feedback,setFeedback]=useState('')
   const [error,setError]=useState(false)
   const [acceptances,setAcceptances]=useState<Record<string,Row>>({})
-  useEffect(()=>{\n    let current=true\n    if(!supabase){setAcceptances({});return}\n    supabase.from('user_consents').select('user_id,terms_version,accepted_at').order('accepted_at',{ascending:false}).then(({data,error})=>{\n      if(!current||error)return\n      const latest:Record<string,Row>={}\n      for(const item of data||[]) if(!latest[item.user_id]) latest[item.user_id]=item\n      setAcceptances(latest)\n    })\n    return ()=>{current=false}\n  },[users])\n  async function submit(event:FormEvent) {
+  useEffect(() => {
+    let current = true
+    if (!supabase) { setAcceptances({}); return }
+    supabase.from('user_consents').select('user_id,terms_version,accepted_at').order('accepted_at', { ascending: false }).then(({ data, error }) => {
+      if (!current || error) return
+      const latest: Record<string, Row> = {}
+      for (const item of data || []) if (!latest[item.user_id]) latest[item.user_id] = item
+      setAcceptances(latest)
+    })
+    return () => { current = false }
+  }, [users])\n  async function submit(event:FormEvent) {
     event.preventDefault()
     setFeedback('');setError(false)
     try {
