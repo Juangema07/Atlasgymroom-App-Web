@@ -850,12 +850,12 @@ export default function App() {
 function TermsAcceptance({ role, busy, error, onAccept }: { role: unknown; busy: boolean; error: string; onAccept: () => void }) {
   const [checked, setChecked] = useState(false)
   const permissions = permissionsForRole(role)
-  return <div className="auth-screen"><section className="auth-card terms-card">
+  return <div className="auth-screen"><section className="auth-card terms-card" style={{ maxWidth: 760, maxHeight: '92vh', overflowY: 'auto', textAlign: 'left' }}>
     <div className="brand-mark"><Shield size={23}/></div><div className="eyebrow">ATLASGYMRUN · ACCESO SEGURO</div>
     <h1>Antes de continuar</h1><p>Lee las condiciones de uso y revisa qué puede hacer tu cuenta.</p>
-    <div className="terms-role"><strong>Tu nivel de acceso: {permissions.label}</strong><ul>{permissions.allowed.map(item=><li key={item}>{item}</li>)}</ul>{'restricted' in permissions && <><strong>Acciones restringidas</strong><ul>{permissions.restricted.map(item=><li key={item}>{item}</li>)}</ul></>}</div>
-    <div className="terms-copy">{TERMS_TEXT.split('\n\n').map((paragraph,index)=><p key={index}>{paragraph}</p>)}</div>
-    <label className="terms-check"><input type="checkbox" checked={checked} onChange={event=>setChecked(event.target.checked)}/><span>Confirmo que leí y acepto los términos y las condiciones de uso, y que conozco los permisos asignados a mi cuenta.</span></label>
+    <div className="terms-role" style={{ padding: 16, borderRadius: 12, background: 'var(--surface-secondary, #f4f5f7)', margin: '16px 0' }}><strong>Tu nivel de acceso: {permissions.label}</strong><ul>{permissions.allowed.map(item=><li key={item}>{item}</li>)}</ul>{'restricted' in permissions && <><strong>Acciones restringidas</strong><ul>{permissions.restricted.map(item=><li key={item}>{item}</li>)}</ul></>}</div>
+    <div className="terms-copy" style={{ maxHeight: 260, overflowY: 'auto', padding: '4px 12px', border: '1px solid var(--border, #ddd)', borderRadius: 10 }}>{TERMS_TEXT.split('\n\n').map((paragraph,index)=><p key={index}>{paragraph}</p>)}</div>
+    <label className="terms-check" style={{ display: 'flex', alignItems: 'flex-start', gap: 10, margin: '18px 0' }}><input type="checkbox" checked={checked} onChange={event=>setChecked(event.target.checked)}/><span>Confirmo que leí y acepto los términos y las condiciones de uso, y que conozco los permisos asignados a mi cuenta.</span></label>
     {error && <p className="auth-error">{error}</p>}
     <button className="primary-button" disabled={!checked || busy} onClick={onAccept}>{busy?'Registrando aceptación…':'Aceptar y continuar'}</button>
     <small className="terms-version">Versión {TERMS_VERSION} · La aceptación queda registrada con fecha y usuario.</small>
